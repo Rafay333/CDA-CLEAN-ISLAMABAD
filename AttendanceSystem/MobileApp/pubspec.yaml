@@ -1,0 +1,17 @@
+name: attendance_app
+description: Face + location attendance
+publish_to: none
+version: 1.0.0
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  camera: ^0.11.0
+  geolocator: ^11.0.0
+  shared_preferences: ^2.2.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png

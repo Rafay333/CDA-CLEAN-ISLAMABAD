@@ -1,0 +1,58 @@
+{
+  "Version": 1,
+  "Hash": "VITiHEN+bNeVkeqhHqAun/QxGzseUKSURk1TxXrlNt4=",
+  "Source": "AttendanceServer",
+  "BasePath": "_content/AttendanceServer",
+  "Mode": "Default",
+  "ManifestType": "Publish",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "AttendanceServer\\wwwroot",
+      "Source": "AttendanceServer",
+      "ContentRoot": "D:\\AttendanceSystem\\Server\\wwwroot\\",
+      "BasePath": "_content/AttendanceServer",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "D:\\AttendanceSystem\\Server\\wwwroot\\index.html",
+      "SourceId": "AttendanceServer",
+      "SourceType": "Discovered",
+      "ContentRoot": "D:\\AttendanceSystem\\Server\\wwwroot\\",
+      "BasePath": "_content/AttendanceServer",
+      "RelativePath": "index.html",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\index.html"
+    },
+    {
+      "Identity": "D:\\AttendanceSystem\\Server\\wwwroot\\logo.png",
+      "SourceId": "AttendanceServer",
+      "SourceType": "Discovered",
+      "ContentRoot": "D:\\AttendanceSystem\\Server\\wwwroot\\",
+      "BasePath": "_content/AttendanceServer",
+      "RelativePath": "logo.png",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\logo.png"
+    }
+  ]
+}

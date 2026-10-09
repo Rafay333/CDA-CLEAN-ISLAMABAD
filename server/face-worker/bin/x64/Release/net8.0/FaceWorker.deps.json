@@ -1,0 +1,164 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "FaceWorker/1.0.0": {
+        "dependencies": {
+          "DlibDotNet": "19.17.0.20190813",
+          "FaceRecognitionDotNet": "1.2.3.13",
+          "System.Drawing.Common": "8.0.31"
+        },
+        "runtime": {
+          "FaceWorker.dll": {}
+        }
+      },
+      "DlibDotNet/19.17.0.20190813": {
+        "runtime": {
+          "lib/netstandard2.0/DlibDotNet.dll": {
+            "assemblyVersion": "19.17.0.0",
+            "fileVersion": "19.17.0.0"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/linux-x64/native/.keepfolder": {
+            "rid": "linux-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-x64/native/libDlibDotNetNative.so": {
+            "rid": "linux-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-x64/native/libDlibDotNetNativeDnn.so": {
+            "rid": "linux-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-x64/native/.keepfolder": {
+            "rid": "osx-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-x64/native/libDlibDotNetNative.dylib": {
+            "rid": "osx-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-x64/native/libDlibDotNetNativeDnn.dylib": {
+            "rid": "osx-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/.keepfolder": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/DlibDotNetNative.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "19.17.0.0"
+          },
+          "runtimes/win-x64/native/DlibDotNetNativeDnn.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "19.17.0.0"
+          },
+          "runtimes/win-x86/native/.keepfolder": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/DlibDotNetNative.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "19.17.0.0"
+          },
+          "runtimes/win-x86/native/DlibDotNetNativeDnn.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "19.17.0.0"
+          }
+        }
+      },
+      "FaceRecognitionDotNet/1.2.3.13": {
+        "dependencies": {
+          "DlibDotNet": "19.17.0.20190813"
+        },
+        "runtime": {
+          "lib/netstandard2.0/FaceRecognitionDotNet.dll": {
+            "assemblyVersion": "1.2.3.10",
+            "fileVersion": "1.2.3.10"
+          }
+        }
+      },
+      "Microsoft.Win32.SystemEvents/8.0.0": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Win32.SystemEvents.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.23.53103"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net8.0/Microsoft.Win32.SystemEvents.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.23.53103"
+          }
+        }
+      },
+      "System.Drawing.Common/8.0.31": {
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "8.0.0"
+        },
+        "runtime": {
+          "lib/net8.0/System.Drawing.Common.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.3126.42106"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "FaceWorker/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "DlibDotNet/19.17.0.20190813": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-TuQY0rtuH7lAkQxrOtpho+Qg7Ocj0OroRNiR4CjU2+k2Xl5fkTlj3KF+urmEvfZLGdboEypxgmF2YHLcDn6HVA==",
+      "path": "dlibdotnet/19.17.0.20190813",
+      "hashPath": "dlibdotnet.19.17.0.20190813.nupkg.sha512"
+    },
+    "FaceRecognitionDotNet/1.2.3.13": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-n54UhjeBryZIxLjR4hqAS/YhMkZEGFRyp/e8iUmtgTvrC2UpHFGVHUuzvI0yxDJj4ezAvs0bZk6B3hsDt9Si8A==",
+      "path": "facerecognitiondotnet/1.2.3.13",
+      "hashPath": "facerecognitiondotnet.1.2.3.13.nupkg.sha512"
+    },
+    "Microsoft.Win32.SystemEvents/8.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-9opKRyOKMCi2xJ7Bj7kxtZ1r9vbzosMvRrdEhVhDz8j8MoBGgB+WmC94yH839NPH+BclAjtQ/pyagvi/8gDLkw==",
+      "path": "microsoft.win32.systemevents/8.0.0",
+      "hashPath": "microsoft.win32.systemevents.8.0.0.nupkg.sha512"
+    },
+    "System.Drawing.Common/8.0.31": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-xCTGg7fw7JE8j3feXaedW8/n7FGfPV5OyAllr+6Hed1w5Q40EFDrT1fL9Xyuj/eQcikYpvVU7Z8RJO0HVjQfzQ==",
+      "path": "system.drawing.common/8.0.31",
+      "hashPath": "system.drawing.common.8.0.31.nupkg.sha512"
+    }
+  }
+}

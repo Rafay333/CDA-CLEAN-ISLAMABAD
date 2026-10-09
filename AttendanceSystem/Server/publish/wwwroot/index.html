@@ -1,0 +1,88 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capital Development Authority - Face Attendance System</title>
+<style>
+:root{--navy:#0b2a4a;--blue:#1e88e5;--bg:#f2f6fb}*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:#1c2733}
+header{display:flex;align-items:center;gap:18px;background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff;padding:18px 32px}.logo{background:#fff;border-radius:12px;padding:8px 12px}.logo img{height:52px;display:block}header h1{margin:0;font-size:26px}header p{margin:4px 0 0;opacity:.85}
+nav{display:flex;gap:8px;padding:12px 32px;background:#fff;border-bottom:1px solid #dde5ee}
+nav button{border:0;background:none;padding:10px 18px;border-radius:8px;font-size:15px;cursor:pointer;color:#456}nav button.on{background:var(--blue);color:#fff}
+main{max-width:1100px;margin:24px auto;padding:0 20px}.card{background:#fff;border-radius:12px;box-shadow:0 2px 8px #0a2a4a14;padding:20px;margin-bottom:20px}
+h3{margin:0 0 12px}input,select{padding:9px 10px;border:1px solid #c5d1de;border-radius:8px;margin:3px;font-size:14px}input[readonly]{background:#eef3f8;width:100px}
+.b{background:var(--blue);color:#fff;border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px}.s{background:#e8eef5;color:#234;border:0;padding:6px 10px;border-radius:6px;cursor:pointer}.d{background:#fdeaea;color:#b3261e;border:0;padding:6px 10px;border-radius:6px;cursor:pointer}
+table{width:100%;border-collapse:collapse}th{background:#f0f4f9;text-align:left}td,th{padding:10px;border-bottom:1px solid #e6edf4;font-size:14px}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px}.ok{background:#e3f6e8;color:#1a7a35}.wait{background:#fff3d6;color:#9a6a00}.hide{display:none}footer{text-align:center;color:#789;padding:20px;font-size:13px}
+.bad{background:#fdeaea;color:#b3261e}#alertBar{background:#fdeaea;color:#b3261e;padding:12px 32px;font-weight:600}#alertBar a{color:#b3261e}</style></head><body>
+<header><div class="logo"><img src="logo.png" alt="CDA"></div><div><h1>Capital Development Authority</h1><p>Face Attendance System</p></div></header>
+<nav><button id="t_emp" class="on" onclick="tab('emp')">Employees</button><button id="t_loc" onclick="tab('loc')">Locations</button><button id="t_att" onclick="tab('att')">Attendance</button><button id="t_alr" onclick="tab('alr')">Alerts</button></nav>
+<div id="alertBar" class="hide"></div>
+<main>
+<section id="p_emp">
+ <div class="card"><h3>Add / edit employee</h3><input id="eCode" readonly title="Assigned automatically"><input id="eName" placeholder="Full name"><input id="eDept" placeholder="Department">
+ <label><input type="checkbox" id="eActive" checked> Active</label> <button class="b" id="eBtn" onclick="saveEmp()">Add employee</button> <button class="s" onclick="clrEmp()">Clear</button></div>
+ <div class="card"><button class="s" onclick="lookalikes()">Check look-alike faces</button> <span id="laTxt" style="color:#567"></span><div id="laRes"></div></div>
+ <div id="asg" class="card hide"></div>
+ <div class="card"><p style="margin:0 0 10px;color:#567;font-size:13px"><b>Marks others</b>: Locked = this person's phone only marks their own attendance. Allowed = supervisor phone, other staff can mark attendance on it.</p><table><thead><tr><th>ID</th><th>Name</th><th>Dept</th><th>Active</th><th>Face</th><th>Marks others</th><th></th></tr></thead><tbody id="emps"></tbody></table></div>
+</section>
+<section id="p_loc" class="hide">
+ <div class="card"><h3>Add location (100 m radius is applied automatically)</h3><input id="lName" placeholder="Name"><input id="lLat" placeholder="Latitude"><input id="lLng" placeholder="Longitude"> <button class="b" onclick="addLoc()">Add location</button></div>
+ <div class="card"><table><thead><tr><th>Name</th><th>Position</th><th>Assigned to</th><th></th></tr></thead><tbody id="locs"></tbody></table></div>
+</section>
+<section id="p_alr" class="hide">
+ <div class="card"><h3>Security alerts</h3><p style="color:#567;font-size:13px;margin:0 0 10px">Fake-location attempts, and IDs blocked for reporting the exact same GPS position 3 times in a row. After checking, press <b>Unblock</b>.</p><button class="s" onclick="seenAlerts()">Mark all as seen</button></div>
+ <div class="card"><table><thead><tr><th>Time</th><th>Employee</th><th>Type</th><th>Detail</th><th></th></tr></thead><tbody id="alrs"></tbody></table></div>
+ <div class="card"><h3>Flagged check-ins (photos kept 30 days)</h3><table><thead><tr><th>Time</th><th>Employee</th><th>Status</th><th>Movement / eyes</th><th>Photos</th></tr></thead><tbody id="flg"></tbody></table></div>
+</section>
+<section id="p_att" class="hide">
+ <div class="card"><h3>Attendance records</h3>From <input type="date" id="aFrom"> To <input type="date" id="aTo"> <select id="aEmp"></select>
+ <button class="b" onclick="loadAtt()">Show</button> <button class="s" onclick="csv()">Export CSV</button> <span id="acount" style="margin-left:10px;color:#567"></span></div>
+ <div class="card"><table><thead><tr><th>Date &amp; time</th><th>ID</th><th>Name</th><th>Location</th><th>Phone used</th><th>Match</th><th>GPS</th><th>Photo</th></tr></thead><tbody id="atts"></tbody></table></div>
+</section>
+</main>
+<footer>Capital Development Authority - Face Attendance System</footer>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(u,m='GET',b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+ if(!r.ok){alert(await r.text());return null}const t=await r.text();return t?JSON.parse(t):true}
+function tab(n){for(const x of['emp','loc','att','alr']){$('p_'+x).classList.toggle('hide',x!==n);$('t_'+x).classList.toggle('on',x===n)}if(n==='att')loadAtt();if(n==='loc')loadLoc();if(n==='alr')loadAlerts()}
+let editId=null,emps=[],attRows=[],asgId=null;
+async function loadEmp(){emps=await api('/api/employees')||[];
+ $('emps').innerHTML=emps.map(e=>`<tr><td>${esc(e.Code)}</td><td>${esc(e.Name)}</td><td>${esc(e.Department)}</td><td>${e.Active?'Yes':'No'}${e.Blocked?` <span class="tag bad" title="${esc(e.BlockReason)}">Blocked</span>`:''}</td>
+ <td><span class="tag ${e.Enrolled?'ok':'wait'}">${e.Enrolled?'Registered':'Pending'}</span></td>
+ <td><span class="tag ${e.AllowOthers?'ok':'wait'}">${e.AllowOthers?'Allowed':'Locked'}</span></td>
+ <td>${e.Blocked?`<button class="b" onclick="unblock(${e.Id})">Unblock</button> `:''}<button class="s" onclick="assign(${e.Id})">Locations</button> <button class="s" onclick="lockEmp(${e.Id},${e.AllowOthers?0:1})">${e.AllowOthers?'Lock':'Allow others'}</button> <button class="s" onclick="editEmp(${e.Id})">Edit</button> <button class="s" onclick="resetFace(${e.Id})">Reset face</button> <button class="d" onclick="delEmp(${e.Id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="7">No employees yet</td></tr>';
+ const cur=$('aEmp').value;$('aEmp').innerHTML='<option value="">All employees</option>'+emps.map(e=>`<option value="${esc(e.Code)}">${esc(e.Code)} - ${esc(e.Name)}</option>`).join('');$('aEmp').value=cur;
+ if(!editId)$('eCode').value=await api('/api/employees/nextcode')||''}
+async function saveEmp(){const b={name:$('eName').value.trim(),department:$('eDept').value.trim(),active:$('eActive').checked};
+ if(!b.name)return alert('Name is required');
+ const r=await api(editId?'/api/employees/'+editId:'/api/employees',editId?'PUT':'POST',b);if(r){clrEmp()}}
+function editEmp(id){const e=emps.find(x=>x.Id==id);editId=id;$('eCode').value=e.Code;$('eName').value=e.Name;$('eDept').value=e.Department||'';$('eActive').checked=!!e.Active;$('eBtn').textContent='Update employee';window.scrollTo(0,0)}
+function clrEmp(){editId=null;$('eName').value='';$('eDept').value='';$('eActive').checked=true;$('eBtn').textContent='Add employee';loadEmp()}
+async function delEmp(id){if(confirm('Delete this employee?')){await api('/api/employees/'+id,'DELETE');loadEmp()}}
+async function resetFace(id){if(confirm('Clear the saved face? The employee will register again.')){await api(`/api/employees/${id}/resetface`,'POST');loadEmp()}}
+async function lockEmp(id,v){await api(`/api/employees/${id}/allowothers/${v}`,'POST');loadEmp()}
+async function lookalikes(){$('laTxt').textContent='Checking...';const r=await api('/api/lookalikes');$('laTxt').textContent='';if(!r)return;$('laRes').innerHTML=r.length?'<table><tr><th>Employee A</th><th>Employee B</th><th>Difference (lower = more alike)</th></tr>'+r.map(x=>`<tr><td>${esc(x.a)}</td><td>${esc(x.b)}</td><td>${x.difference}</td></tr>`).join('')+'</table>':'No look-alike pairs found.'}
+async function assign(id){asgId=id;const e=emps.find(x=>x.Id==id);const all=await api('/api/locations')||[];const mine=await api(`/api/employees/${id}/locations`)||[];
+ $('asg').classList.remove('hide');$('asg').innerHTML=`<h3>Locations for ${esc(e.Name)}</h3>`+(all.length?all.map(l=>`<label style="display:block;margin:6px 0"><input type="checkbox" value="${l.Id}" ${mine.includes(l.Id)?'checked':''}> ${esc(l.Name)}</label>`).join(''):'Add locations first.')+`<br><button class="b" onclick="saveAsg()">Save</button> <button class="s" onclick="$('asg').classList.add('hide')">Close</button>`}
+async function saveAsg(){const ids=[...$('asg').querySelectorAll('input:checked')].map(x=>+x.value);await api(`/api/employees/${asgId}/locations`,'PUT',ids);$('asg').classList.add('hide')}
+async function loadLoc(){const l=await api('/api/locations')||[];
+ $('locs').innerHTML=l.map(x=>`<tr><td>${esc(x.Name)}</td><td>${x.Lat}, ${x.Lng}</td><td>${x.Assigned} employee(s)</td><td><button class="d" onclick="delLoc(${x.Id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="4">No locations yet</td></tr>'}
+async function addLoc(){const r=await api('/api/locations','POST',{name:$('lName').value.trim(),lat:+$('lLat').value,lng:+$('lLng').value});if(r){$('lName').value=$('lLat').value=$('lLng').value='';loadLoc()}}
+async function delLoc(id){if(confirm('Delete this location?')){await api('/api/locations/'+id,'DELETE');loadLoc()}}
+const mt=r=>r.Similarity==null?'':Math.round(r.Similarity*100)+'%';
+const gps=r=>r.Accuracy==null?'':'±'+Math.round(r.Accuracy)+' m';
+async function loadAtt(){attRows=await api(`/api/attendance?from=${$('aFrom').value}&to=${$('aTo').value}&emp=${encodeURIComponent($('aEmp').value)}`)||[];
+ $('atts').innerHTML=attRows.map(r=>`<tr><td>${new Date(r.Time).toLocaleString()}</td><td>${esc(r.Code)}</td><td>${esc(r.Name)}</td><td>${esc(r.Location)}</td><td>${esc(r.PhoneOf)}</td><td>${mt(r)}</td><td>${gps(r)}</td><td>${r.CheckinPhotoId?`<a href="/api/checkins/${r.CheckinPhotoId}/photo/1" target="_blank">view</a>`:''}</td></tr>`).join('')||'<tr><td colspan="8">No records for this period</td></tr>';
+ $('acount').textContent=attRows.length+' record(s)'}
+function csv(){const rows=attRows.map(r=>[new Date(r.Time).toLocaleString(),r.Code,r.Name,r.Location,r.PhoneOf,mt(r),gps(r)].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','));
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['Time,ID,Name,Location,Phone used,Match,GPS accuracy\n'+rows.join('\n')],{type:'text/csv'}));a.download='attendance.csv';a.click()}
+const now=new Date(),iso=new Date(now-now.getTimezoneOffset()*60000).toISOString().slice(0,10);$('aFrom').value=iso;async function loadAlerts(){loadFlagged();const r=await api('/api/alerts')||[];
+ $('alrs').innerHTML=r.map(a=>`<tr style="${a.Seen?'':'background:#fff8e6'}"><td>${new Date(a.Time).toLocaleString()}</td><td>${esc(a.Code)} ${esc(a.Name)}</td><td><span class="tag ${a.Kind==='Blocked'?'bad':'wait'}">${esc(a.Kind)}</span></td><td>${esc(a.Detail)}</td><td>${a.Blocked?`<button class="b" onclick="unblock(${a.EmployeeId})">Unblock</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5">No alerts</td></tr>'}
+async function loadFlagged(){const r=await api('/api/checkins/flagged')||[];
+ $('flg').innerHTML=r.map(c=>`<tr><td>${new Date(c.Time).toLocaleString()}</td><td>${esc(c.Code)} ${esc(c.Name)}</td><td><span class="tag ${c.Status==='refused'?'bad':'wait'}">${esc(c.Status)}</span></td><td>${c.Motion==null?'':c.Motion.toFixed(3)} / ${c.Blink==null?'':c.Blink.toFixed(3)}</td><td>${[1,2,3].map(n=>`<a href="/api/checkins/${c.Id}/photo/${n}" target="_blank">photo ${n}</a>`).join(' ')}</td></tr>`).join('')||'<tr><td colspan="5">None</td></tr>'}
+async function seenAlerts(){await api('/api/alerts/seen','POST');loadAlerts();alertBar()}
+async function unblock(id){if(confirm('Unblock this ID? Check the alert details first.')){await api(`/api/employees/${id}/unblock`,'POST');loadEmp();loadAlerts();alertBar()}}
+async function alertBar(){let s=null;try{const r=await fetch('/api/alerts/summary');if(r.ok)s=await r.json()}catch(_){}
+ const b=$('alertBar');if(s&&(s.Blocked>0||s.Unseen>0)){b.classList.remove('hide');b.innerHTML=`&#9888; ${s.Blocked} ID(s) blocked, ${s.Unseen} new alert(s). <a href="#" onclick="tab('alr');return false">View alerts</a>`}else b.classList.add('hide')}
+setInterval(alertBar,30000);
+$('aTo').value=iso;loadEmp();loadLoc();alertBar();
+</script></body></html>

@@ -1,0 +1,6 @@
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.csproj.AssemblyReference.cache
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.GeneratedMSBuildEditorConfig.editorconfig
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.AssemblyInfoInputs.cache
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.AssemblyInfo.cs
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.csproj.CoreCompileInputs.cache
+D:\AttendanceSystem\Server\obj\Release\net8.0\win-x64\AttendanceServer.MvcApplicationPartsAssemblyInfo.cache

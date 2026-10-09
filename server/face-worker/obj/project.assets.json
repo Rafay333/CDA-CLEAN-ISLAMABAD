@@ -1,0 +1,350 @@
+{
+  "version": 4,
+  "targets": {
+    "net8.0": {
+      "DlibDotNet/19.17.0.20190813": {
+        "type": "package",
+        "compile": {
+          "lib/netstandard2.0/DlibDotNet.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard2.0/DlibDotNet.dll": {}
+        },
+        "build": {
+          "build/DlibDotNet.props": {},
+          "build/DlibDotNet.targets": {}
+        },
+        "runtimeTargets": {
+          "runtimes/linux-x64/native/.keepfolder": {
+            "assetType": "native",
+            "rid": "linux-x64"
+          },
+          "runtimes/linux-x64/native/libDlibDotNetNative.so": {
+            "assetType": "native",
+            "rid": "linux-x64"
+          },
+          "runtimes/linux-x64/native/libDlibDotNetNativeDnn.so": {
+            "assetType": "native",
+            "rid": "linux-x64"
+          },
+          "runtimes/osx-x64/native/.keepfolder": {
+            "assetType": "native",
+            "rid": "osx-x64"
+          },
+          "runtimes/osx-x64/native/libDlibDotNetNative.dylib": {
+            "assetType": "native",
+            "rid": "osx-x64"
+          },
+          "runtimes/osx-x64/native/libDlibDotNetNativeDnn.dylib": {
+            "assetType": "native",
+            "rid": "osx-x64"
+          },
+          "runtimes/win-x64/native/.keepfolder": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x64/native/DlibDotNetNative.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x64/native/DlibDotNetNativeDnn.dll": {
+            "assetType": "native",
+            "rid": "win-x64"
+          },
+          "runtimes/win-x86/native/.keepfolder": {
+            "assetType": "native",
+            "rid": "win-x86"
+          },
+          "runtimes/win-x86/native/DlibDotNetNative.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          },
+          "runtimes/win-x86/native/DlibDotNetNativeDnn.dll": {
+            "assetType": "native",
+            "rid": "win-x86"
+          }
+        }
+      },
+      "FaceRecognitionDotNet/1.2.3.13": {
+        "type": "package",
+        "dependencies": {
+          "DlibDotNet": "19.17.0.20190623"
+        },
+        "compile": {
+          "lib/netstandard2.0/FaceRecognitionDotNet.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/FaceRecognitionDotNet.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Microsoft.Win32.SystemEvents/8.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/Microsoft.Win32.SystemEvents.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Win32.SystemEvents.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/net6.0/_._": {}
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net8.0/Microsoft.Win32.SystemEvents.dll": {
+            "assetType": "runtime",
+            "rid": "win"
+          }
+        }
+      },
+      "System.Drawing.Common/8.0.31": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "8.0.0"
+        },
+        "compile": {
+          "lib/net8.0/System.Drawing.Common.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/System.Drawing.Common.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "build": {
+          "buildTransitive/net6.0/_._": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "DlibDotNet/19.17.0.20190813": {
+      "sha512": "TuQY0rtuH7lAkQxrOtpho+Qg7Ocj0OroRNiR4CjU2+k2Xl5fkTlj3KF+urmEvfZLGdboEypxgmF2YHLcDn6HVA==",
+      "type": "package",
+      "path": "dlibdotnet/19.17.0.20190813",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE.txt",
+        "build/DlibDotNet.props",
+        "build/DlibDotNet.targets",
+        "dlibdotnet.19.17.0.20190813.nupkg.sha512",
+        "dlibdotnet.nuspec",
+        "lib/netstandard2.0/DlibDotNet.dll",
+        "licenses/dlib.txt",
+        "licenses/giflib.txt",
+        "licenses/libjpeg.txt",
+        "licenses/libpng.txt",
+        "licenses/zlib.txt",
+        "ref/.keepfolder",
+        "ref/native/.keepfolder",
+        "runtimes/linux-x64/lib/.keepfolder",
+        "runtimes/linux-x64/native/.keepfolder",
+        "runtimes/linux-x64/native/libDlibDotNetNative.so",
+        "runtimes/linux-x64/native/libDlibDotNetNativeDnn.so",
+        "runtimes/osx-x64/lib/.keepfolder",
+        "runtimes/osx-x64/native/.keepfolder",
+        "runtimes/osx-x64/native/libDlibDotNetNative.dylib",
+        "runtimes/osx-x64/native/libDlibDotNetNativeDnn.dylib",
+        "runtimes/win-x64/lib/.keepfolder",
+        "runtimes/win-x64/native/.keepfolder",
+        "runtimes/win-x64/native/DlibDotNetNative.dll",
+        "runtimes/win-x64/native/DlibDotNetNativeDnn.dll",
+        "runtimes/win-x86/lib/.keepfolder",
+        "runtimes/win-x86/native/.keepfolder",
+        "runtimes/win-x86/native/DlibDotNetNative.dll",
+        "runtimes/win-x86/native/DlibDotNetNativeDnn.dll"
+      ]
+    },
+    "FaceRecognitionDotNet/1.2.3.13": {
+      "sha512": "n54UhjeBryZIxLjR4hqAS/YhMkZEGFRyp/e8iUmtgTvrC2UpHFGVHUuzvI0yxDJj4ezAvs0bZk6B3hsDt9Si8A==",
+      "type": "package",
+      "path": "facerecognitiondotnet/1.2.3.13",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE.txt",
+        "facerecognitiondotnet.1.2.3.13.nupkg.sha512",
+        "facerecognitiondotnet.nuspec",
+        "lib/netstandard2.0/FaceRecognitionDotNet.dll",
+        "lib/netstandard2.0/FaceRecognitionDotNet.xml",
+        "lib/netstandard2.0/ja/FaceRecognitionDotNet.xml"
+      ]
+    },
+    "Microsoft.Win32.SystemEvents/8.0.0": {
+      "sha512": "9opKRyOKMCi2xJ7Bj7kxtZ1r9vbzosMvRrdEhVhDz8j8MoBGgB+WmC94yH839NPH+BclAjtQ/pyagvi/8gDLkw==",
+      "type": "package",
+      "path": "microsoft.win32.systemevents/8.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "LICENSE.TXT",
+        "THIRD-PARTY-NOTICES.TXT",
+        "buildTransitive/net461/Microsoft.Win32.SystemEvents.targets",
+        "buildTransitive/net462/_._",
+        "buildTransitive/net6.0/_._",
+        "buildTransitive/netcoreapp2.0/Microsoft.Win32.SystemEvents.targets",
+        "lib/net462/Microsoft.Win32.SystemEvents.dll",
+        "lib/net462/Microsoft.Win32.SystemEvents.xml",
+        "lib/net6.0/Microsoft.Win32.SystemEvents.dll",
+        "lib/net6.0/Microsoft.Win32.SystemEvents.xml",
+        "lib/net7.0/Microsoft.Win32.SystemEvents.dll",
+        "lib/net7.0/Microsoft.Win32.SystemEvents.xml",
+        "lib/net8.0/Microsoft.Win32.SystemEvents.dll",
+        "lib/net8.0/Microsoft.Win32.SystemEvents.xml",
+        "lib/netstandard2.0/Microsoft.Win32.SystemEvents.dll",
+        "lib/netstandard2.0/Microsoft.Win32.SystemEvents.xml",
+        "microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+        "microsoft.win32.systemevents.nuspec",
+        "runtimes/win/lib/net6.0/Microsoft.Win32.SystemEvents.dll",
+        "runtimes/win/lib/net6.0/Microsoft.Win32.SystemEvents.xml",
+        "runtimes/win/lib/net7.0/Microsoft.Win32.SystemEvents.dll",
+        "runtimes/win/lib/net7.0/Microsoft.Win32.SystemEvents.xml",
+        "runtimes/win/lib/net8.0/Microsoft.Win32.SystemEvents.dll",
+        "runtimes/win/lib/net8.0/Microsoft.Win32.SystemEvents.xml",
+        "useSharedDesignerContext.txt"
+      ]
+    },
+    "System.Drawing.Common/8.0.31": {
+      "sha512": "xCTGg7fw7JE8j3feXaedW8/n7FGfPV5OyAllr+6Hed1w5Q40EFDrT1fL9Xyuj/eQcikYpvVU7Z8RJO0HVjQfzQ==",
+      "type": "package",
+      "path": "system.drawing.common/8.0.31",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "LICENSE.TXT",
+        "THIRD-PARTY-NOTICES.TXT",
+        "buildTransitive/net461/System.Drawing.Common.targets",
+        "buildTransitive/net462/_._",
+        "buildTransitive/net6.0/_._",
+        "buildTransitive/netcoreapp2.0/System.Drawing.Common.targets",
+        "lib/MonoAndroid10/_._",
+        "lib/MonoTouch10/_._",
+        "lib/net462/System.Drawing.Common.dll",
+        "lib/net462/System.Drawing.Common.pdb",
+        "lib/net462/System.Drawing.Common.xml",
+        "lib/net6.0/System.Drawing.Common.dll",
+        "lib/net6.0/System.Drawing.Common.pdb",
+        "lib/net6.0/System.Drawing.Common.xml",
+        "lib/net7.0/System.Drawing.Common.dll",
+        "lib/net7.0/System.Drawing.Common.pdb",
+        "lib/net7.0/System.Drawing.Common.xml",
+        "lib/net8.0/System.Drawing.Common.dll",
+        "lib/net8.0/System.Drawing.Common.pdb",
+        "lib/net8.0/System.Drawing.Common.xml",
+        "lib/netstandard2.0/System.Drawing.Common.dll",
+        "lib/netstandard2.0/System.Drawing.Common.pdb",
+        "lib/netstandard2.0/System.Drawing.Common.xml",
+        "lib/xamarinios10/_._",
+        "lib/xamarinmac20/_._",
+        "lib/xamarintvos10/_._",
+        "lib/xamarinwatchos10/_._",
+        "system.drawing.common.8.0.31.nupkg.sha512",
+        "system.drawing.common.nuspec",
+        "useSharedDesignerContext.txt"
+      ]
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "DlibDotNet >= 19.17.0.20190813",
+      "FaceRecognitionDotNet >= 1.2.3.13",
+      "System.Drawing.Common >= 8.0.*"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\FaceWorker.csproj",
+      "projectName": "FaceWorker",
+      "projectPath": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\FaceWorker.csproj",
+      "packagesPath": "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget",
+      "outputPath": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\a.rafay\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files\\dotnet\\library-packs": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "framework": "net8.0",
+          "targetAlias": "net8.0",
+          "projectReferences": {}
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "10.0.400"
+    },
+    "frameworks": {
+      "net8.0": {
+        "framework": "net8.0",
+        "targetAlias": "net8.0",
+        "dependencies": {
+          "DlibDotNet": {
+            "target": "Package",
+            "version": "[19.17.0.20190813, )"
+          },
+          "FaceRecognitionDotNet": {
+            "target": "Package",
+            "version": "[1.2.3.13, )"
+          },
+          "System.Drawing.Common": {
+            "target": "Package",
+            "version": "[8.0.*, )"
+          }
+        },
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}
