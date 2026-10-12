@@ -14,7 +14,11 @@ class PrimarySiteFormScreen extends StatelessWidget {
       title: 'Primary Sites',
       kind: WasteKind.primary,
       submitLabel: 'Continue',
-      onSubmit: () => context.push(AppRoutes.primaryRecord),
+      ruralOnly: true,
+      onSubmit: () async {
+        if (!context.mounted) return;
+        context.push(AppRoutes.primaryRecord);
+      },
     );
   }
 }

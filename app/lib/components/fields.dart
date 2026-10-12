@@ -16,6 +16,7 @@ class DropdownField extends StatelessWidget {
     this.value,
     this.onChanged,
     this.errorText,
+    this.enabled = true,
   });
 
   final String label;
@@ -24,6 +25,7 @@ class DropdownField extends StatelessWidget {
   final String? value;
   final ValueChanged<String>? onChanged;
   final String? errorText;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +40,7 @@ class DropdownField extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.sm),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.sm),
-            onTap: () => _open(context),
+            onTap: enabled ? () => _open(context) : null,
             child: Container(
               constraints: const BoxConstraints(minHeight: 52),
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -81,37 +83,139 @@ class DropdownField extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
+    if (!enabled) return;
     final selected = await showAppSheet<String>(
       context,
       builder: (context) {
-        return SheetScaffold(
-          title: label,
-          child: items.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.fromLTRB(8, 8, 8, 12),
-                  child: EmptyState(
-                    icon: Icons.inbox_outlined,
-                    title: AppCopy.noOptions,
-                    message: AppCopy.noOptionsHint,
-                  ),
-                )
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: AppColors.border),
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return ListTile(
-                      title: Text(item, style: AppType.body),
-                      onTap: () => Navigator.of(context).pop(item),
-                    );
-                  },
-                ),
-        );
+        return _OptionSheet(title: label, items: items, selected: value);
       },
     );
     if (selected != null) onChanged?.call(selected);
+  }
+}
+
+class _OptionSheet extends StatefulWidget {
+  const _OptionSheet({
+    required this.title,
+    required this.items,
+    required this.selected,
+  });
+
+  final String title;
+  final List<String> items;
+  final String? selected;
+
+  @override
+  State<_OptionSheet> createState() => _OptionSheetState();
+}
+
+class _OptionSheetState extends State<_OptionSheet> {
+  final TextEditingController _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.items.isEmpty) {
+      return SheetScaffold(
+        title: widget.title,
+        child: const Padding(
+          padding: EdgeInsets.fromLTRB(8, 8, 8, 12),
+          child: EmptyState(
+            icon: Icons.inbox_outlined,
+            title: AppCopy.noOptions,
+            message: AppCopy.noOptionsHint,
+          ),
+        ),
+      );
+    }
+
+    final query = _query.text.trim().toLowerCase();
+    final visible = query.isEmpty
+        ? widget.items
+        : widget.items
+              .where((item) => item.toLowerCase().contains(query))
+              .toList();
+    final media = MediaQuery.of(context);
+    final maxHeight = (media.size.height - media.viewInsets.bottom) * 0.42;
+    final height = visible.isEmpty
+        ? 120.0
+        : (visible.length * 56.0).clamp(56.0, maxHeight);
+
+    return SheetScaffold(
+      title: widget.title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.items.length > 12)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _query,
+                onChanged: (_) => setState(() {}),
+                style: AppType.body,
+                cursorColor: AppColors.emerald,
+                decoration: InputDecoration(
+                  hintText: 'Search',
+                  hintStyle: AppType.body.copyWith(
+                    color: AppColors.disabledText,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: AppColors.textSecondary,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: _searchBorder(AppColors.border),
+                  enabledBorder: _searchBorder(AppColors.border),
+                  focusedBorder: _searchBorder(AppColors.emerald),
+                ),
+              ),
+            ),
+          SizedBox(
+            height: height,
+            child: visible.isEmpty
+                ? Center(child: Text('No matches', style: AppType.caption))
+                : ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    itemCount: visible.length,
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, color: AppColors.border),
+                    itemBuilder: (context, index) {
+                      final item = visible[index];
+                      final chosen = item == widget.selected;
+                      return ListTile(
+                        title: Text(item, style: AppType.body),
+                        trailing: chosen
+                            ? const Icon(
+                                Icons.check_rounded,
+                                color: AppColors.emerald,
+                              )
+                            : null,
+                        onTap: () => Navigator.of(context).pop(item),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  OutlineInputBorder _searchBorder(Color color) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      borderSide: BorderSide(color: color),
+    );
   }
 }
 

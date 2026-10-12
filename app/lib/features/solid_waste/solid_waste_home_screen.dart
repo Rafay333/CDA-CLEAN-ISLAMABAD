@@ -57,7 +57,7 @@ class SolidWasteHomeScreen extends StatelessWidget {
                   badge: const Color(0xFFE4F8FA),
                   wash: const Color(0xFFD2F4F7),
                   title: 'Activity',
-                  subtitle: 'View waste activity',
+                  subtitle: 'Collection, sweeping and mechanical work.',
                   onTap: () => context.push(AppRoutes.wasteActivity),
                 ),
                 const SizedBox(height: 14),
@@ -67,7 +67,7 @@ class SolidWasteHomeScreen extends StatelessWidget {
                   badge: const Color(0xFFE5F6EE),
                   wash: const Color(0xFFD7F3E6),
                   title: 'Tagging',
-                  subtitle: 'Tag sites and records',
+                  subtitle: 'Tag a container once.',
                   onTap: () => context.push(AppRoutes.wasteTagging),
                 ),
                 const SizedBox(height: 14),
@@ -77,7 +77,7 @@ class SolidWasteHomeScreen extends StatelessWidget {
                   badge: const Color(0xFFFFF4E3),
                   wash: const Color(0xFFFFE8C4),
                   title: 'Bulk Waste',
-                  subtitle: 'Record bulk waste',
+                  subtitle: 'General pictorial evidence.',
                   onTap: () => context.push(AppRoutes.bulkWaste),
                 ),
               ],
@@ -182,50 +182,16 @@ class _WasteCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: accent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF8AA0B5),
+                    size: 22,
                   ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class WasteSectionScreen extends StatelessWidget {
-  const WasteSectionScreen({
-    super.key,
-    required this.title,
-    required this.icon,
-  });
-
-  final String title;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppPage(
-      title: title,
-      body: Center(
-        child: EmptyState(
-          icon: icon,
-          title: title,
-          message: 'This section will appear here once it is connected.',
         ),
       ),
     );

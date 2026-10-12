@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../constants/app_assets.dart';
 import '../../constants/app_routes.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -20,9 +21,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _progress = AnimationController(vsync: this, duration: const Duration(seconds: 5));
-    _progress.addStatusListener((status) {
+    _progress.addStatusListener((status) async {
       if (status != AnimationStatus.completed || !mounted) return;
-      context.go(AppRoutes.login);
+      await AppStateScope.read(context).ready;
+      if (!mounted) return;
+      final signedIn = AppStateScope.read(context).session != null;
+      context.go(signedIn ? AppRoutes.home : AppRoutes.login);
     });
     _progress.forward();
   }

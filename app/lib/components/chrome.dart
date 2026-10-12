@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../constants/app_assets.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
-import 'identity.dart';
 
 const _homeHeaderGradient = LinearGradient(
   colors: [Color(0xFF00695C), Color(0xFF0A4A62), Color(0xFF12304A)],
@@ -14,10 +13,18 @@ const _homeHeaderGradient = LinearGradient(
 );
 
 class AppHeader extends StatelessWidget {
-  const AppHeader({super.key, this.onNotifications, this.onProfile});
+  const AppHeader({
+    super.key,
+    this.onNotifications,
+    this.onSync,
+    this.onLogout,
+    this.pendingSync = 0,
+  });
 
   final VoidCallback? onNotifications;
-  final VoidCallback? onProfile;
+  final VoidCallback? onSync;
+  final VoidCallback? onLogout;
+  final int pendingSync;
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +39,20 @@ class AppHeader extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const _LogoChip(),
                   const Spacer(),
+                  IconActionButton(
+                    icon: Icons.sync_rounded,
+                    tooltip: pendingSync > 0
+                        ? 'Sync data, $pendingSync pending'
+                        : 'Sync data',
+                    onPressed: onSync,
+                    light: true,
+                    badgeCount: pendingSync,
+                  ),
+                  const SizedBox(width: 8),
                   IconActionButton(
                     icon: Icons.notifications_none_rounded,
                     tooltip: 'Notifications',
@@ -42,7 +60,12 @@ class AppHeader extends StatelessWidget {
                     light: true,
                   ),
                   const SizedBox(width: 8),
-                  AppAvatar(size: 36, onTap: onProfile),
+                  IconActionButton(
+                    icon: Icons.logout_rounded,
+                    tooltip: 'Log out',
+                    onPressed: onLogout,
+                    light: true,
+                  ),
                 ],
               ),
             ),
@@ -144,6 +167,7 @@ class AppPage extends StatelessWidget {
     this.bottom,
     this.actions,
     this.showBack = true,
+    this.centerTitle = false,
   });
 
   final String title;
@@ -151,6 +175,7 @@ class AppPage extends StatelessWidget {
   final Widget? bottom;
   final List<Widget>? actions;
   final bool showBack;
+  final bool centerTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +183,12 @@ class AppPage extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          PageHeader(title: title, actions: actions, showBack: showBack),
+          PageHeader(
+            title: title,
+            actions: actions,
+            showBack: showBack,
+            centerTitle: centerTitle,
+          ),
           Expanded(child: body),
           if (bottom != null)
             DecoratedBox(
@@ -198,6 +228,8 @@ class _LogoChip extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             'Clean Islamabad',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppType.caption.copyWith(
               color: AppColors.emerald,
               fontWeight: FontWeight.w700,
@@ -218,12 +250,14 @@ class IconActionButton extends StatelessWidget {
     required this.tooltip,
     this.onPressed,
     this.light = false,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final bool light;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +275,37 @@ class IconActionButton extends StatelessWidget {
           child: SizedBox(
             width: 40,
             height: 40,
-            child: Icon(icon, size: 20, color: color),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, size: 20, color: color),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.error,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.white, width: 1.5),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badgeCount > 9 ? '9+' : '$badgeCount',
+                        style: AppType.caption.copyWith(
+                          color: AppColors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

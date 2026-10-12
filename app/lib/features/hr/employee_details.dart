@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_copy.dart';
+import '../../core/supervisor_api.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 import '../../utils/display_format.dart';
-import 'attendance_api.dart';
 
 class EmployeeDetails extends StatelessWidget {
   const EmployeeDetails({
@@ -142,11 +143,14 @@ class EmployeePhoto extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(Icons.person_outline, size: size * 0.5, color: AppColors.textSecondary),
     );
+    final cnic = AppStateScope.of(context).session?.cnic ?? '';
+    final api = SupervisorApi();
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.md),
-      child: enrolled
+      child: enrolled && cnic.isNotEmpty
           ? Image.network(
-              AttendanceApi().photoUrl(employeeId, registeredAt),
+              api.facePhotoUrl(employeeId, cnic, registeredAt),
+              headers: api.facePhotoHeaders,
               width: size,
               height: size,
               fit: BoxFit.cover,

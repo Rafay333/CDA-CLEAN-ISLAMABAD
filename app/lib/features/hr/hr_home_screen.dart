@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../home/today_card.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 
@@ -31,6 +32,8 @@ class HrHomeScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
+                const TodayCard(),
+                const SizedBox(height: 14),
                 _HrCard(
                   icon: Icons.groups_outlined,
                   accent: const Color(0xFF2F9E6B),

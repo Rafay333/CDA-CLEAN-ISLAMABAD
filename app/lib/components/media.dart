@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
@@ -13,20 +14,38 @@ class PhotoUploader extends StatelessWidget {
     required this.photos,
     required this.onAdd,
     required this.onRemove,
+    this.maxPhotos,
+    this.caption,
+    this.captionColor,
   });
 
   final String title;
   final String hint;
   final List<LocalPhoto> photos;
-  final VoidCallback onAdd;
+  final ValueChanged<LocalPhoto> onAdd;
   final ValueChanged<String> onRemove;
+  final int? maxPhotos;
+  final String? caption;
+  final Color? captionColor;
+
+  bool get _canAdd => maxPhotos == null || photos.length < maxPhotos!;
 
   @override
   Widget build(BuildContext context) {
+    final canAdd = _canAdd;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: AppType.label),
+        if (caption != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            caption!,
+            style: captionColor == null
+                ? AppType.caption
+                : AppType.caption.copyWith(color: captionColor),
+          ),
+        ],
         const SizedBox(height: 8),
         if (photos.isEmpty)
           Material(
@@ -34,7 +53,7 @@ class PhotoUploader extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.md),
             child: InkWell(
               borderRadius: BorderRadius.circular(AppRadius.md),
-              onTap: () => _ask(context),
+              onTap: canAdd ? () => _ask(context) : null,
               child: Container(
                 width: double.infinity,
                 constraints: const BoxConstraints(minHeight: 120),
@@ -58,7 +77,7 @@ class PhotoUploader extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Camera will connect in a later release',
+                      'Camera or gallery',
                       style: AppType.caption,
                       textAlign: TextAlign.center,
                     ),
@@ -72,14 +91,15 @@ class PhotoUploader extends StatelessWidget {
             height: 112,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: photos.length + 1,
+              itemCount: photos.length + (canAdd ? 1 : 0),
               separatorBuilder: (_, _) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
-                if (index == photos.length) {
+                if (canAdd && index == photos.length) {
                   return _AddTile(onTap: () => _ask(context));
                 }
                 return PhotoCard(
                   index: index,
+                  photo: photos[index],
                   onRemove: () => onRemove(photos[index].id),
                 );
               },
@@ -90,7 +110,8 @@ class PhotoUploader extends StatelessWidget {
   }
 
   Future<void> _ask(BuildContext context) async {
-    final add = await showAppSheet<bool>(
+    if (!_canAdd) return;
+    final source = await showAppSheet<ImageSource>(
       context,
       builder: (context) {
         return SheetScaffold(
@@ -100,13 +121,8 @@ class PhotoUploader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'A photo placeholder is added on this device. The camera and file upload are not connected yet.',
-                  style: AppType.caption,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(ImageSource.camera),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.emerald,
                     minimumSize: const Size.fromHeight(48),
@@ -114,10 +130,22 @@ class PhotoUploader extends StatelessWidget {
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
-                  child: Text(
-                    'Add photo',
-                    style: AppType.button.copyWith(color: AppColors.white),
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: Text('Camera', style: AppType.button.copyWith(color: AppColors.white)),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).pop(ImageSource.gallery),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.navy,
+                    minimumSize: const Size.fromHeight(48),
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
                   ),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Gallery'),
                 ),
               ],
             ),
@@ -125,7 +153,29 @@ class PhotoUploader extends StatelessWidget {
         );
       },
     );
-    if (add == true) onAdd();
+    if (source is! ImageSource || !context.mounted) return;
+    try {
+      final file = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 70,
+        maxWidth: 1600,
+      );
+      if (file == null || !context.mounted) return;
+      final bytes = await file.readAsBytes();
+      if (!context.mounted) return;
+      onAdd(
+        LocalPhoto(
+          DateTime.now().microsecondsSinceEpoch.toString(),
+          bytes: bytes,
+          filename: file.name,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The photo could not be opened.')),
+      );
+    }
   }
 }
 
@@ -154,7 +204,13 @@ class _AddTile extends StatelessWidget {
             children: [
               const Icon(Icons.add_rounded, color: AppColors.teal),
               const SizedBox(height: 4),
-              Text('Add', style: AppType.caption.copyWith(color: AppColors.teal, fontWeight: FontWeight.w700)),
+              Text(
+                'Add',
+                style: AppType.caption.copyWith(
+                  color: AppColors.teal,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
         ),
@@ -167,11 +223,13 @@ class PhotoCard extends StatelessWidget {
   const PhotoCard({
     super.key,
     required this.index,
+    this.photo,
     this.onRemove,
     this.emptyLabel,
   });
 
   final int index;
+  final LocalPhoto? photo;
   final VoidCallback? onRemove;
   final String? emptyLabel;
 
@@ -203,21 +261,20 @@ class PhotoCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.sm),
               border: Border.all(color: AppColors.border),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.image_outlined,
-                  color: AppColors.navy,
-                  size: 26,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Photo ${index + 1}',
-                  style: AppType.caption.copyWith(color: AppColors.navy),
-                ),
-              ],
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: photo?.bytes == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.image_outlined, color: AppColors.navy, size: 26),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Photo ${index + 1}',
+                        style: AppType.caption.copyWith(color: AppColors.navy),
+                      ),
+                    ],
+                  )
+                : Image.memory(photo!.bytes!, fit: BoxFit.cover, width: 104, height: 112),
           ),
           if (onRemove != null)
             Positioned(

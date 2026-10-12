@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
+import '../../core/supervisor_api.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 import '../../utils/display_format.dart';
-import 'attendance_api.dart';
 import 'employee_details.dart';
 
 class AttendanceLogScreen extends StatefulWidget {
@@ -15,7 +16,7 @@ class AttendanceLogScreen extends StatefulWidget {
 }
 
 class _AttendanceLogScreenState extends State<AttendanceLogScreen> {
-  final _api = AttendanceApi();
+  final _api = SupervisorApi();
   final _search = TextEditingController();
   DateTime _date = DateTime.now();
   List<Map<String, dynamic>> _rows = [];
@@ -25,7 +26,9 @@ class _AttendanceLogScreenState extends State<AttendanceLogScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -40,13 +43,17 @@ class _AttendanceLogScreenState extends State<AttendanceLogScreen> {
       _error = null;
     });
     try {
-      final rows = await _api.log(date: _date);
+      final session = AppStateScope.read(context).session;
+      if (session == null) throw SupervisorException('Sign in again.');
+      final month = _date.month.toString().padLeft(2, '0');
+      final day = _date.day.toString().padLeft(2, '0');
+      final rows = await _api.faceLog(session.cnic, date: '${_date.year}-$month-$day');
       if (!mounted) return;
       setState(() {
         _rows = rows;
         _loading = false;
       });
-    } on AttendanceException catch (error) {
+    } on SupervisorException catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -119,6 +126,8 @@ class _LogCard extends StatelessWidget {
     final out = row['checkOut'] == null;
     final match = row['similarity'];
     final percent = match is num ? '${(match * 100).round()}% match' : null;
+    final employeeId = row['employeeId'];
+    final id = employeeId is int ? employeeId : int.tryParse('$employeeId') ?? 0;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -131,7 +140,7 @@ class _LogCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           EmployeePhoto(
-            employeeId: row['employeeId'] as int,
+            employeeId: id,
             registeredAt: row['faceRegisteredAt'] as String?,
             enrolled: row['enrolled'] == true,
             size: 64,

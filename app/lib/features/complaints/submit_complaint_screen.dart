@@ -5,8 +5,6 @@ import '../../components/components.dart';
 import '../../constants/app_copy.dart';
 import '../../constants/app_routes.dart';
 import '../../state/app_state.dart';
-import '../../theme/app_colors.dart';
-import '../../utils/validators.dart';
 
 class SubmitComplaintScreen extends StatefulWidget {
   const SubmitComplaintScreen({super.key});
@@ -31,11 +29,9 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
     super.dispose();
   }
 
-  void _addPhoto() {
+  void _addPhoto(LocalPhoto photo) {
     AppStateScope.read(context).updateComplaint((draft) {
-      draft.photos.add(
-        LocalPhoto(DateTime.now().microsecondsSinceEpoch.toString()),
-      );
+      draft.photos.add(photo);
     });
   }
 
@@ -46,28 +42,13 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
   }
 
   void _submit() {
-    final error = Validators.requiredText(
-      _description.text,
-      'Enter a description',
+    setState(() => _error = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('New complaints are opened by the citizen app. Resolve an open complaint from the map.'),
+      ),
     );
-    setState(() => _error = error);
-    if (error != null) return;
-    AppStateScope.read(context).updateComplaint((draft) {
-      draft.submitted = true;
-      draft.description = _description.text.trim();
-      draft.status = ComplaintStatus.fresh;
-      draft.submittedAt = DateTime.now();
-      draft.timeline
-        ..clear()
-        ..add(
-          TimelineEntry(
-            title: 'Marked as New',
-            at: DateTime.now(),
-            color: AppColors.info,
-          ),
-        );
-    });
-    context.push(AppRoutes.complaintDetails);
+    context.go(AppRoutes.complaintMap);
   }
 
   @override

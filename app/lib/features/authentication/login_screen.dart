@@ -5,10 +5,17 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../constants/app_assets.dart';
 import '../../constants/app_routes.dart';
+import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
+import '../../utils/validators.dart';
 
 const _titleGreen = Color(0xFF137A47);
 const _buttonTeal = Color(0xFF1C9B98);
+const _loginGradient = LinearGradient(
+  colors: [Color(0xFF00695C), Color(0xFF0A4A62), Color(0xFF12304A)],
+  begin: Alignment.centerLeft,
+  end: Alignment.centerRight,
+);
 const _linkTeal = Color(0xFF21A5A0);
 const _fieldFill = Color(0xFFF5F5F5);
 const _hintColor = Color(0xFF8E939A);
@@ -23,22 +30,71 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _name = TextEditingController();
-  final _email = TextEditingController();
+  final _cnic = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  bool _obscurePassword = true;
+  String? _error;
 
   @override
   void dispose() {
-    _name.dispose();
-    _email.dispose();
+    _cnic.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  void _submit() {
-    final name = _name.text.trim();
-    if (name.isNotEmpty) {
-      AppStateScope.read(context).saveProfile(ProfileDetails(name: name));
-    }
+  Future<void> _guest() async {
+    if (_busy) return;
+    await AppStateScope.read(context).signIn(
+      const SupervisorUser(
+        userId: 0,
+        employeeId: 0,
+        fullName: 'Guest',
+        cnic: '',
+        phone: '',
+        contractorId: 0,
+        contractorCode: '',
+        contractorName: 'Guest',
+      ),
+      remember: false,
+    );
+    if (!mounted) return;
     context.go(AppRoutes.home);
+  }
+
+  Future<void> _submit() async {
+    final cnicError = Validators.cnic(_cnic.text);
+    if (cnicError != null) {
+      setState(() => _error = cnicError);
+      return;
+    }
+    if (_password.text.isEmpty) {
+      setState(() => _error = 'Enter your password');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final user = await SupervisorApi().login(
+        cnic: _cnic.text.replaceAll(RegExp(r'\D'), ''),
+        password: _password.text,
+      );
+      if (!mounted) return;
+      await AppStateScope.read(context).signIn(
+        user,
+        remember: AppStateScope.read(context).rememberMe,
+      );
+      if (!mounted) return;
+      context.go(AppRoutes.home);
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = error.message;
+      });
+    }
   }
 
   @override
@@ -82,11 +138,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             _LoginSheet(
                               minHeight: cardMin,
                               bottomSafe: bottomSafe,
-                              name: _name,
-                              email: _email,
+                              cnic: _cnic,
+                              password: _password,
+                              obscurePassword: _obscurePassword,
+                              onTogglePassword: () => setState(() => _obscurePassword = !_obscurePassword),
+                              busy: _busy,
+                              error: _error,
                               remember: remember,
                               onRemember: (value) => AppStateScope.read(context).setRememberMe(value),
-                              onForgot: () => context.push(AppRoutes.forgotPassword),
+                              onGuest: _guest,
                               onSubmit: _submit,
                             ),
                           ],
@@ -201,21 +261,29 @@ class _LoginSheet extends StatelessWidget {
   const _LoginSheet({
     required this.minHeight,
     required this.bottomSafe,
-    required this.name,
-    required this.email,
+    required this.cnic,
+    required this.password,
+    required this.obscurePassword,
+    required this.onTogglePassword,
+    required this.busy,
+    required this.error,
     required this.remember,
     required this.onRemember,
-    required this.onForgot,
+    required this.onGuest,
     required this.onSubmit,
   });
 
   final double minHeight;
   final double bottomSafe;
-  final TextEditingController name;
-  final TextEditingController email;
+  final TextEditingController cnic;
+  final TextEditingController password;
+  final bool obscurePassword;
+  final VoidCallback onTogglePassword;
+  final bool busy;
+  final String? error;
   final bool remember;
   final ValueChanged<bool> onRemember;
-  final VoidCallback onForgot;
+  final VoidCallback onGuest;
   final VoidCallback onSubmit;
 
   @override
@@ -248,32 +316,58 @@ class _LoginSheet extends StatelessWidget {
                   letterSpacing: -0.4,
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 8),
+              Text(
+                'Use the 13-digit CNIC and password on your supervisor account.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(color: _hintColor, fontSize: 13.5, height: 1.35),
+              ),
+              const SizedBox(height: 18),
               _PillField(
-                controller: name,
-                hint: 'Michael Daniel Harris',
-                icon: Icons.person_outline_rounded,
-                textCapitalization: TextCapitalization.words,
+                controller: cnic,
+                hint: 'CNIC',
+                icon: Icons.badge_outlined,
+                keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.next,
-                autofillHints: const [AutofillHints.name],
+                autofillHints: const [AutofillHints.username],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 13,
               ),
               const SizedBox(height: 14),
               _PillField(
-                controller: email,
-                hint: 'Enter your email address',
-                icon: Icons.mail_outline_rounded,
-                keyboardType: TextInputType.emailAddress,
+                controller: password,
+                hint: 'Password',
+                icon: Icons.lock_outline_rounded,
+                obscure: obscurePassword,
+                keyboardType: TextInputType.visiblePassword,
                 textInputAction: TextInputAction.done,
-                autofillHints: const [AutofillHints.email],
+                autofillHints: const [AutofillHints.password],
                 onSubmitted: (_) => onSubmit(),
+                suffix: IconButton(
+                  onPressed: onTogglePassword,
+                  tooltip: obscurePassword ? 'Show password' : 'Hide password',
+                  icon: Icon(
+                    obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: _iconColor,
+                    size: 22,
+                  ),
+                ),
               ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  error!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(color: const Color(0xFFB42318), fontSize: 13.5, height: 1.35),
+                ),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [
                   _RememberMe(value: remember, onChanged: onRemember),
                   const Spacer(),
                   TextButton(
-                    onPressed: onForgot,
+                    onPressed: onGuest,
                     style: TextButton.styleFrom(
                       foregroundColor: _linkTeal,
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -282,7 +376,7 @@ class _LoginSheet extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                     ),
                     child: Text(
-                      'Forgot Password?',
+                      'Sign in with guest',
                       style: GoogleFonts.inter(
                         color: _linkTeal,
                         fontSize: 14.5,
@@ -295,17 +389,29 @@ class _LoginSheet extends StatelessWidget {
               const SizedBox(height: 18),
               SizedBox(
                 height: 56,
-                child: FilledButton(
-                  onPressed: onSubmit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _buttonTeal,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shadowColor: Colors.transparent,
-                    shape: const StadiumBorder(),
-                    textStyle: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600),
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: _loginGradient,
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
                   ),
-                  child: const Text('Login'),
+                  child: FilledButton(
+                    onPressed: busy ? null : onSubmit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: const StadiumBorder(),
+                      textStyle: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600),
+                    ),
+                    child: busy
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                          )
+                        : const Text('Login'),
+                  ),
                 ),
               ),
             ],
@@ -323,9 +429,12 @@ class _PillField extends StatelessWidget {
     required this.icon,
     this.keyboardType,
     this.textInputAction,
-    this.textCapitalization = TextCapitalization.none,
     this.autofillHints,
     this.onSubmitted,
+    this.obscure = false,
+    this.suffix,
+    this.inputFormatters,
+    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -333,9 +442,12 @@ class _PillField extends StatelessWidget {
   final IconData icon;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
-  final TextCapitalization textCapitalization;
   final Iterable<String>? autofillHints;
   final ValueChanged<String>? onSubmitted;
+  final bool obscure;
+  final Widget? suffix;
+  final List<TextInputFormatter>? inputFormatters;
+  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
@@ -349,8 +461,10 @@ class _PillField extends StatelessWidget {
       onSubmitted: onSubmitted,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
-      textCapitalization: textCapitalization,
       autofillHints: autofillHints,
+      obscureText: obscure,
+      inputFormatters: inputFormatters,
+      maxLength: maxLength,
       autocorrect: false,
       cursorColor: _buttonTeal,
       style: GoogleFonts.inter(
@@ -369,7 +483,10 @@ class _PillField extends StatelessWidget {
         fillColor: _fieldFill,
         prefixIcon: Icon(icon, color: _iconColor, size: 22),
         prefixIconConstraints: const BoxConstraints(minWidth: 52, minHeight: 48),
+        suffixIcon: suffix,
+        suffixIconConstraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+        counterText: '',
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(

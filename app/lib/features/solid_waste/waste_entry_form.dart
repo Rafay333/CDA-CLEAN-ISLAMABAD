@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
+import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
+import 'waste_catalog.dart';
 
 class WasteEntryForm extends StatefulWidget {
   const WasteEntryForm({
@@ -16,16 +18,20 @@ class WasteEntryForm extends StatefulWidget {
     this.showUc = true,
     this.showPrimarySite = true,
     this.showBeforePhoto = true,
+    this.ruralOnly = false,
+    this.modes = const [],
   });
 
   final String title;
   final WasteKind kind;
   final String submitLabel;
-  final VoidCallback onSubmit;
+  final Future<void> Function() onSubmit;
   final bool showArea;
   final bool showUc;
   final bool showPrimarySite;
   final bool showBeforePhoto;
+  final bool ruralOnly;
+  final List<String> modes;
 
   @override
   State<WasteEntryForm> createState() => _WasteEntryFormState();
@@ -34,13 +40,21 @@ class WasteEntryForm extends StatefulWidget {
 class _WasteEntryFormState extends State<WasteEntryForm> {
   late final TextEditingController _vehicleNumber;
   late String _area;
+  String? _mode;
+  String? _tcp;
+  bool _saving = false;
+  final List<LocalPhoto> _zeroBefore = [];
+  final List<LocalPhoto> _zeroAfter = [];
+
+  bool get _zeroWaste => _mode == 'Zero Waste';
 
   @override
   void initState() {
     super.initState();
     final waste = AppStateScope.read(context).waste;
     _vehicleNumber = TextEditingController(text: waste.vehicleNumber);
-    _area = waste.area;
+    _area = widget.ruralOnly ? 'Rural' : waste.area;
+    if (widget.modes.isNotEmpty) _mode = widget.modes.first;
   }
 
   @override
@@ -49,30 +63,68 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
     super.dispose();
   }
 
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   void _commit() {
-    AppStateScope.read(context).updateWaste((draft) {
+    final state = AppStateScope.read(context);
+    if (_zeroWaste) {
+      state.updateWaste((draft) {
+        draft.kind = widget.kind;
+        draft.area = 'Rural';
+        draft.zeroWaste = true;
+        draft.tcpName = _tcp;
+        draft.activity = null;
+        draft.beforePhotos
+          ..clear()
+          ..addAll(_zeroBefore);
+        draft.afterPhotos
+          ..clear()
+          ..addAll(_zeroAfter);
+      });
+      return;
+    }
+
+    state.updateWaste((draft) {
       draft.kind = widget.kind;
       draft.area = _area;
       draft.vehicleNumber = _vehicleNumber.text.trim();
+      draft.zeroWaste = false;
+      draft.tcpName = null;
     });
+  }
+
+  bool _ready() {
+    if (_zeroWaste && (_tcp == null || _tcp!.trim().isEmpty)) {
+      _snack('Select the name of the TCP.');
+      return false;
+    }
+    return true;
   }
 
   Future<void> _locate() async {
     final state = AppStateScope.read(context);
     state.updateWaste((draft) => draft.locating = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    state.updateWaste((draft) => draft.locating = false);
+    final geo = await currentGeoTag();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Live location is not connected yet.')),
-    );
+    if (geo == null) {
+      state.updateWaste((draft) => draft.locating = false);
+      _snack('Location is not available.');
+      return;
+    }
+    final parts = geo.split(',');
+    state.updateWaste((draft) {
+      draft.locating = false;
+      draft.latitude = parts.first;
+      draft.longitude = parts.length > 1 ? parts[1] : null;
+    });
   }
 
-  void _addPhoto() {
+  void _addPhoto(LocalPhoto photo) {
     AppStateScope.read(context).updateWaste((draft) {
-      draft.beforePhotos.add(
-        LocalPhoto(DateTime.now().microsecondsSinceEpoch.toString()),
-      );
+      draft.beforePhotos.add(photo);
     });
   }
 
@@ -84,8 +136,17 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
 
   void _clear() {
     _vehicleNumber.clear();
-    setState(() => _area = 'Urban');
-    AppStateScope.read(context).updateWaste((draft) => draft.reset());
+    setState(() {
+      _area = widget.ruralOnly ? 'Rural' : 'Urban';
+      _tcp = null;
+      _zeroBefore.clear();
+      _zeroAfter.clear();
+      if (widget.modes.isNotEmpty) _mode = widget.modes.first;
+    });
+    AppStateScope.read(context).updateWaste((draft) {
+      draft.reset();
+      if (widget.ruralOnly) draft.area = 'Rural';
+    });
   }
 
   @override
@@ -107,69 +168,150 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
       ],
       bottom: PrimaryButton(
         label: widget.submitLabel,
-        onPressed: () {
-          _commit();
-          widget.onSubmit();
-        },
+        loading: _saving,
+        onPressed: _saving
+            ? null
+            : () async {
+                if (!_ready()) return;
+                _commit();
+                setState(() => _saving = true);
+                try {
+                  await widget.onSubmit();
+                } finally {
+                  if (mounted) setState(() => _saving = false);
+                }
+              },
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          if (widget.showArea) ...[
+          if (widget.modes.isNotEmpty) ...[
+            Text('Type', style: AppType.label),
+            const SizedBox(height: 8),
             SegmentedControl(
-              options: const ['Urban', 'Rural'],
-              value: _area,
-              onChanged: (value) => setState(() => _area = value),
+              options: widget.modes,
+              value: _mode ?? widget.modes.first,
+              onChanged: (value) => setState(() => _mode = value),
             ),
             const SizedBox(height: 16),
           ],
-          const SectionHeader(title: 'Site'),
-          const SizedBox(height: 12),
-          if (widget.showUc)
-            const DropdownField(label: 'UC', hint: 'Select UC', items: []),
-          if (widget.showUc) const SizedBox(height: 14),
-          if (widget.showPrimarySite)
-            const DropdownField(
-              label: 'Primary Site',
-              hint: 'Select primary site',
-              items: [],
+          if (_zeroWaste) ...[
+            Text(
+              'Before and after pictures for the selected TCP.',
+              style: AppType.body.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
             ),
-          if (widget.showPrimarySite) const SizedBox(height: 14),
-          const DropdownField(
-            label: 'Location',
-            hint: 'Select location',
-            items: [],
-          ),
-          const SizedBox(height: 18),
-          const SectionHeader(title: 'Vehicle'),
-          const SizedBox(height: 12),
-          const DropdownField(
-            label: 'Vehicle Type',
-            hint: 'Select vehicle type',
-            items: [],
-          ),
-          const SizedBox(height: 14),
-          TextInput(
-            label: 'Vehicle Number',
-            controller: _vehicleNumber,
-            hint: 'Enter vehicle number',
-          ),
-          const SizedBox(height: 18),
-          LocationCard(
-            latitude: waste.latitude,
-            longitude: waste.longitude,
-            loading: waste.locating,
-            onGetLocation: _locate,
-          ),
-          if (widget.showBeforePhoto) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
+            DropdownField(
+              label: 'Name of TCP',
+              hint: 'Select TCP',
+              items: WasteCatalog.tcpNames,
+              value: _tcp,
+              onChanged: (value) => setState(() => _tcp = value),
+            ),
+            const SizedBox(height: 16),
             PhotoUploader(
               title: 'Before Photo',
               hint: 'Upload Before Photo',
-              photos: waste.beforePhotos,
-              onAdd: _addPhoto,
-              onRemove: _removePhoto,
+              photos: _zeroBefore,
+              onAdd: (photo) => setState(() => _zeroBefore.add(photo)),
+              onRemove: (id) {
+                setState(
+                  () => _zeroBefore.removeWhere((photo) => photo.id == id),
+                );
+              },
             ),
+            const SizedBox(height: 16),
+            PhotoUploader(
+              title: 'After Photo',
+              hint: 'Upload After Photo',
+              photos: _zeroAfter,
+              onAdd: (photo) => setState(() => _zeroAfter.add(photo)),
+              onRemove: (id) {
+                setState(
+                  () => _zeroAfter.removeWhere((photo) => photo.id == id),
+                );
+              },
+            ),
+          ] else ...[
+            if (widget.showArea && widget.ruralOnly) ...[
+              Text('Area', style: AppType.label),
+              const SizedBox(height: 8),
+              IgnorePointer(
+                child: SegmentedControl(
+                  options: const ['Rural'],
+                  value: 'Rural',
+                  onChanged: (_) {},
+                ),
+              ),
+              const SizedBox(height: 16),
+            ] else if (widget.showArea) ...[
+              SegmentedControl(
+                options: const ['Urban', 'Rural'],
+                value: _area,
+                onChanged: (value) => setState(() => _area = value),
+              ),
+              const SizedBox(height: 16),
+            ],
+            const SectionHeader(title: 'Site'),
+            const SizedBox(height: 12),
+            if (widget.showUc)
+              DropdownField(
+                label: 'UC',
+                hint: 'Select UC',
+                items: WasteCatalog.allUcs,
+                value: waste.uc,
+                onChanged: (value) {
+                  AppStateScope.read(context)
+                      .updateWaste((draft) => draft.uc = value);
+                },
+              ),
+            if (widget.showUc) const SizedBox(height: 14),
+            if (widget.showPrimarySite)
+              const DropdownField(
+                label: 'Primary Site',
+                hint: 'Select primary site',
+                items: [],
+              ),
+            if (widget.showPrimarySite) const SizedBox(height: 14),
+            const DropdownField(
+              label: 'Location',
+              hint: 'Select location',
+              items: [],
+            ),
+            const SizedBox(height: 18),
+            const SectionHeader(title: 'Vehicle'),
+            const SizedBox(height: 12),
+            const DropdownField(
+              label: 'Vehicle Type',
+              hint: 'Select vehicle type',
+              items: [],
+            ),
+            const SizedBox(height: 14),
+            TextInput(
+              label: 'Vehicle Number',
+              controller: _vehicleNumber,
+              hint: 'Enter vehicle number',
+            ),
+            const SizedBox(height: 18),
+            LocationCard(
+              latitude: waste.latitude,
+              longitude: waste.longitude,
+              loading: waste.locating,
+              onGetLocation: _locate,
+            ),
+            if (widget.showBeforePhoto) ...[
+              const SizedBox(height: 18),
+              PhotoUploader(
+                title: 'Before Photo',
+                hint: 'Upload Before Photo',
+                photos: waste.beforePhotos,
+                onAdd: _addPhoto,
+                onRemove: _removePhoto,
+              ),
+            ],
           ],
         ],
       ),

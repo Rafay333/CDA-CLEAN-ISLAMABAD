@@ -74,6 +74,8 @@ flutter:
     - assets/images/faisal_masjid.jpg
     - assets/images/islamabad_aerial.png
     - assets/images/rawal_sunset.jpg
+    - test/On_map/Zone-4_UCs.xml
+    - test/On_map/Zone-5_UCs.xml
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

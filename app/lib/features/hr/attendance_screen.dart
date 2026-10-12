@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
+import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
-import 'attendance_api.dart';
 import 'employee_details.dart';
 import 'face_capture.dart';
 
@@ -16,14 +16,13 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  final _api = AttendanceApi();
+  final _api = SupervisorApi();
   Map<String, dynamic>? _employee;
   Map<String, dynamic>? _attendance;
   int? _match;
   String? _message;
   InlineTone _tone = InlineTone.info;
   bool _saving = false;
-  // Who was matched most recently, kept at the top after the screen resets.
   Map<String, dynamic>? _lastEmployee;
   String? _lastDetail;
 
@@ -33,7 +32,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _message = null;
     });
     try {
-      final position = await attendancePosition();
+      final session = AppStateScope.read(context).session;
+      if (session == null) throw SupervisorException('Sign in again.');
+      final position = await supervisorFacePosition();
       if (!mounted) return;
       final photos = await FaceCapturePage.open(context, title: 'Attendance', burst: true);
       if (photos == null) {
@@ -41,12 +42,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         return;
       }
       if (photos.length < 3) {
-        throw AttendanceException('The camera could not take all the pictures. Please try again.');
+        throw SupervisorException('The camera could not take all the pictures. Please try again.');
       }
-      final deviceId = await attendanceDeviceId();
-      final result = await _api.markAttendance(
+      final deviceId = await supervisorDeviceId();
+      final result = await _api.markFace(
+        cnic: session.cnic,
         photos: photos,
-        position: position,
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracy: position.accuracy,
+        mock: position.isMocked,
         deviceId: deviceId,
       );
       if (!mounted) return;
@@ -86,7 +91,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         matchPercent: match,
       );
       if (!mounted) return;
-      // Ready for the next worker.
       setState(() {
         _employee = null;
         _attendance = null;
@@ -94,7 +98,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _message = null;
         _tone = InlineTone.info;
       });
-    } on AttendanceException catch (error) {
+    } on SupervisorException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -133,13 +137,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Icon(Icons.photo_camera_outlined, color: AppColors.lime, size: 42),
                 SizedBox(height: 12),
                 Text(
-                  'Three photos, then a face match',
+                  'Look at the camera for 5 seconds',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.white, fontWeight: FontWeight.w600, fontSize: 16),
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'Look at the screen and blink naturally',
+                  'The first scan today is check-in',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 13),
                 ),
@@ -149,7 +153,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           const SizedBox(height: 16),
           InlineMessage(
             tone: _message == null ? InlineTone.info : _tone,
-            message: _message ?? 'Your location is checked, then the face is matched to a registered employee.',
+            message: _message ?? 'The face is shown for 5 seconds, then matched to a registered employee.',
           ),
           if (_saving) ...[
             const SizedBox(height: 16),
@@ -191,7 +195,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 }
 
-/// Name of the matched worker, pinned to the top of the attendance screen.
 class _MatchedBanner extends StatelessWidget {
   const _MatchedBanner({required this.employee, required this.detail, required this.live});
 
@@ -239,7 +242,6 @@ class _MatchedBanner extends StatelessWidget {
   }
 }
 
-/// Shown once the face is matched. Closing it clears the screen for the next worker.
 class _AttendanceResultDialog extends StatelessWidget {
   const _AttendanceResultDialog({
     required this.employee,
@@ -275,9 +277,7 @@ class _AttendanceResultDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final marked = action == 'checkin' || action == 'checkout';
-    final title = marked
-        ? 'Attendance marked successfully'
-        : 'Already marked today';
+    final title = marked ? 'Attendance marked successfully' : 'Already marked today';
     final detail = action == 'checkin'
         ? 'Checked in at ${_clock(attendance?['checkIn'])}'
         : action == 'checkout'
@@ -328,8 +328,7 @@ class _AttendanceResultDialog extends StatelessWidget {
                     Text('Employee ID: ${employee['employeeId']}', style: AppType.caption),
                     Text('CNIC: ${employee['cnic']}', style: AppType.caption),
                     Text('${employee['role']}', style: AppType.caption),
-                    if (matchPercent != null)
-                      Text('Face match: $matchPercent%', style: AppType.caption),
+                    if (matchPercent != null) Text('Face match: $matchPercent%', style: AppType.caption),
                   ],
                 ),
               ),

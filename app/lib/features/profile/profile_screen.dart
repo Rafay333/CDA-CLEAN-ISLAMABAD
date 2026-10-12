@@ -8,20 +8,25 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 
+Future<void> confirmSignOut(BuildContext context) async {
+  final state = AppStateScope.read(context);
+  final pending = state.hasPendingSync;
+  final confirmed = await ConfirmationDialog.show(
+    context,
+    title: 'Sign out?',
+    message: pending
+        ? 'A record on this phone was not saved to the server. Sign out drops it.'
+        : 'You will return to the login screen.',
+    confirmLabel: 'Sign out',
+  );
+  if (!confirmed || !context.mounted) return;
+  await AppStateScope.read(context).clearSession();
+  if (!context.mounted) return;
+  context.go(AppRoutes.login);
+}
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
-  Future<void> _signOut(BuildContext context) async {
-    final confirmed = await ConfirmationDialog.show(
-      context,
-      title: 'Sign out?',
-      message: 'You will return to the login screen.',
-      confirmLabel: 'Sign out',
-    );
-    if (!confirmed || !context.mounted) return;
-    AppStateScope.read(context).clearSession();
-    context.go(AppRoutes.login);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +39,7 @@ class ProfileScreen extends StatelessWidget {
         children: [
           ProfileCard(
             name: profile.name,
-            subtitle: AppCopy.roleLabel,
+            subtitle: AppStateScope.of(context).session?.contractorName ?? AppCopy.roleLabel,
             onAvatarTap: () => context.push(AppRoutes.profileDetails),
           ),
           const SizedBox(height: 8),
@@ -50,7 +55,7 @@ class ProfileScreen extends StatelessWidget {
             onTap: () => context.push(AppRoutes.profileDetails),
           ),
           const SizedBox(height: 18),
-          OutlineButton(label: 'Sign out', onPressed: () => _signOut(context)),
+          OutlineButton(label: 'Sign out', onPressed: () => confirmSignOut(context)),
         ],
       ),
     );

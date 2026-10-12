@@ -20,10 +20,13 @@ import '../features/hr/worker_registration_screen.dart';
 import '../features/profile/profile_details_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reports/reports_screen.dart';
+import '../features/solid_waste/activity_screen.dart';
+import '../features/solid_waste/bulk_waste_screen.dart';
 import '../features/solid_waste/primary_site_form_screen.dart';
 import '../features/solid_waste/primary_site_record_screen.dart';
 import '../features/solid_waste/record_details_screen.dart';
 import '../features/solid_waste/solid_waste_home_screen.dart';
+import '../features/solid_waste/tagging_screen.dart';
 import '../features/solid_waste/transfer_station_screen.dart';
 
 GoRouter createAppRouter() {
@@ -114,24 +117,15 @@ GoRouter createAppRouter() {
       ),
       GoRoute(
         path: AppRoutes.wasteActivity,
-        builder: (context, state) => const WasteSectionScreen(
-          title: 'Activity',
-          icon: Icons.timeline_outlined,
-        ),
+        builder: (context, state) => const ActivityScreen(),
       ),
       GoRoute(
         path: AppRoutes.wasteTagging,
-        builder: (context, state) => const WasteSectionScreen(
-          title: 'Tagging',
-          icon: Icons.sell_outlined,
-        ),
+        builder: (context, state) => const TaggingScreen(),
       ),
       GoRoute(
         path: AppRoutes.bulkWaste,
-        builder: (context, state) => const WasteSectionScreen(
-          title: 'Bulk Waste',
-          icon: Icons.delete_sweep_outlined,
-        ),
+        builder: (context, state) => const BulkWasteScreen(),
       ),
       GoRoute(
         path: AppRoutes.recordDetails,

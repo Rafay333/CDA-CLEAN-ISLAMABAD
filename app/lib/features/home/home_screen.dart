@@ -3,22 +3,28 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_assets.dart';
-import '../../constants/app_copy.dart';
 import '../../constants/app_routes.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_typography.dart';
+import '../profile/profile_screen.dart';
+import 'sync_sheet.dart';
+import 'today_card.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final pendingSync = AppStateScope.of(context).pendingSyncCount;
     return Scaffold(
       backgroundColor: _HomePalette.background,
       body: Column(
         children: [
           AppHeader(
+            pendingSync: pendingSync,
+            onSync: () => showSyncSheet(context),
             onNotifications: () => context.push(AppRoutes.notifications),
-            onProfile: () => context.push(AppRoutes.profileDetails),
+            onLogout: () => confirmSignOut(context),
           ),
           Expanded(
             child: LayoutBuilder(
@@ -29,17 +35,8 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                   children: [
                     _HeroBanner(height: bannerHeight),
-                    const SizedBox(height: 20),
-                    Text(
-                      AppCopy.roleLabel,
-                      style: AppType.title.copyWith(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: _HomePalette.navy,
-                        height: 1.15,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
+                    const SizedBox(height: 14),
+                    const TodayCard(),
                     const SizedBox(height: 20),
                     Text(
                       'Modules',
