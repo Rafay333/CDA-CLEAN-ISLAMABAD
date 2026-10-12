@@ -75,7 +75,7 @@ class _AfterPhotoScreenState extends State<AfterPhotoScreen> {
         draft.status = ComplaintStatus.resolved;
         draft.timeline.add(
           TimelineEntry(
-            title: 'Marked as Resolved',
+            title: 'Marked as Completed',
             at: DateTime.now(),
             color: complaintStatusColor(ComplaintStatus.resolved),
           ),

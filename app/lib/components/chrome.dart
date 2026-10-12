@@ -15,16 +15,18 @@ const _homeHeaderGradient = LinearGradient(
 class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
-    this.onNotifications,
+    this.onRefresh,
     this.onSync,
     this.onLogout,
     this.pendingSync = 0,
+    this.refreshing = false,
   });
 
-  final VoidCallback? onNotifications;
+  final VoidCallback? onRefresh;
   final VoidCallback? onSync;
   final VoidCallback? onLogout;
   final int pendingSync;
+  final bool refreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +56,11 @@ class AppHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   IconActionButton(
-                    icon: Icons.notifications_none_rounded,
-                    tooltip: 'Notifications',
-                    onPressed: onNotifications,
+                    icon: Icons.refresh_rounded,
+                    tooltip: 'Refresh page',
+                    onPressed: onRefresh,
                     light: true,
+                    busy: refreshing,
                   ),
                   const SizedBox(width: 8),
                   IconActionButton(
@@ -107,8 +110,8 @@ class PageHeader extends StatelessWidget {
                 alignment: Alignment.center,
                 children: [
                   if (centerTitle)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 52),
+                      Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 56),
                       child: Text(
                         title,
                         maxLines: 1,
@@ -251,6 +254,7 @@ class IconActionButton extends StatelessWidget {
     this.onPressed,
     this.light = false,
     this.badgeCount = 0,
+    this.busy = false,
   });
 
   final IconData icon;
@@ -258,6 +262,7 @@ class IconActionButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool light;
   final int badgeCount;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +276,7 @@ class IconActionButton extends StatelessWidget {
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
-          onTap: onPressed,
+          onTap: busy ? null : onPressed,
           child: SizedBox(
             width: 40,
             height: 40,
@@ -279,7 +284,14 @@ class IconActionButton extends StatelessWidget {
               clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
-                Icon(icon, size: 20, color: color),
+                if (busy)
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                  )
+                else
+                  Icon(icon, size: 20, color: color),
                 if (badgeCount > 0)
                   Positioned(
                     top: 4,

@@ -16,7 +16,6 @@ const _loginGradient = LinearGradient(
   begin: Alignment.centerLeft,
   end: Alignment.centerRight,
 );
-const _linkTeal = Color(0xFF21A5A0);
 const _fieldFill = Color(0xFFF5F5F5);
 const _hintColor = Color(0xFF8E939A);
 const _iconColor = Color(0xFFC4C8CE);
@@ -41,25 +40,6 @@ class _LoginScreenState extends State<LoginScreen> {
     _cnic.dispose();
     _password.dispose();
     super.dispose();
-  }
-
-  Future<void> _guest() async {
-    if (_busy) return;
-    await AppStateScope.read(context).signIn(
-      const SupervisorUser(
-        userId: 0,
-        employeeId: 0,
-        fullName: 'Guest',
-        cnic: '',
-        phone: '',
-        contractorId: 0,
-        contractorCode: '',
-        contractorName: 'Guest',
-      ),
-      remember: false,
-    );
-    if (!mounted) return;
-    context.go(AppRoutes.home);
   }
 
   Future<void> _submit() async {
@@ -146,7 +126,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               error: _error,
                               remember: remember,
                               onRemember: (value) => AppStateScope.read(context).setRememberMe(value),
-                              onGuest: _guest,
                               onSubmit: _submit,
                             ),
                           ],
@@ -269,7 +248,6 @@ class _LoginSheet extends StatelessWidget {
     required this.error,
     required this.remember,
     required this.onRemember,
-    required this.onGuest,
     required this.onSubmit,
   });
 
@@ -283,7 +261,6 @@ class _LoginSheet extends StatelessWidget {
   final String? error;
   final bool remember;
   final ValueChanged<bool> onRemember;
-  final VoidCallback onGuest;
   final VoidCallback onSubmit;
 
   @override
@@ -362,29 +339,9 @@ class _LoginSheet extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  _RememberMe(value: remember, onChanged: onRemember),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: onGuest,
-                    style: TextButton.styleFrom(
-                      foregroundColor: _linkTeal,
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: Text(
-                      'Sign in with guest',
-                      style: GoogleFonts.inter(
-                        color: _linkTeal,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _RememberMe(value: remember, onChanged: onRemember),
               ),
               const SizedBox(height: 18),
               SizedBox(

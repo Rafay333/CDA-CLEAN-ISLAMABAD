@@ -26,7 +26,7 @@ class ComplaintDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final complaint = AppStateScope.of(context).complaint;
     final actionLabel = complaint.status == ComplaintStatus.resolved
-        ? 'Resolved'
+        ? 'Completed'
         : 'Add after photos';
     return AppPage(
       title: 'Complaint Details',

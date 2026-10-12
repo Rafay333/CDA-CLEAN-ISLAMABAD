@@ -7,10 +7,18 @@ import '../home/today_card.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 
-class HrHomeScreen extends StatelessWidget {
+class HrHomeScreen extends StatefulWidget {
   const HrHomeScreen({super.key});
 
-  void _openTab(BuildContext context, int index) {
+  @override
+  State<HrHomeScreen> createState() => _HrHomeScreenState();
+}
+
+class _HrHomeScreenState extends State<HrHomeScreen> {
+  final _todayKey = GlobalKey<TodayCardState>();
+  var _refreshing = false;
+
+  void _openTab(int index) {
     switch (index) {
       case 1:
         context.go(AppRoutes.reports);
@@ -21,18 +29,40 @@ class HrHomeScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _refreshPage() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await _todayKey.currentState?.reload();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          const PageHeader(title: 'HR Management', centerTitle: true),
+          PageHeader(
+            title: 'HR Management',
+            centerTitle: true,
+            actions: [
+              IconActionButton(
+                icon: Icons.refresh_rounded,
+                tooltip: 'Refresh page',
+                light: true,
+                busy: _refreshing,
+                onPressed: _refreshPage,
+              ),
+            ],
+          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const TodayCard(),
+                TodayCard(key: _todayKey),
                 const SizedBox(height: 14),
                 _HrCard(
                   icon: Icons.groups_outlined,
@@ -70,7 +100,7 @@ class HrHomeScreen extends StatelessWidget {
       ),
       bottomNavigationBar: AppBottomNavigation(
         currentIndex: 0,
-        onTap: (index) => _openTab(context, index),
+        onTap: _openTab,
       ),
     );
   }

@@ -9,10 +9,11 @@ class TodayCard extends StatefulWidget {
   const TodayCard({super.key});
 
   @override
-  State<TodayCard> createState() => _TodayCardState();
+  TodayCardState createState() => TodayCardState();
 }
 
-class _TodayCardState extends State<TodayCard> {
+class TodayCardState extends State<TodayCard> {
+  Future<void> reload() => _load();
   HrSummary? _summary;
   int? _openIssues;
   int? _evidence;

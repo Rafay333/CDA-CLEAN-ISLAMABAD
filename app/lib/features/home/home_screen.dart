@@ -10,8 +10,26 @@ import '../profile/profile_screen.dart';
 import 'sync_sheet.dart';
 import 'today_card.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _todayKey = GlobalKey<TodayCardState>();
+  var _refreshing = false;
+
+  Future<void> _refreshPage() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await _todayKey.currentState?.reload();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +40,9 @@ class HomeScreen extends StatelessWidget {
         children: [
           AppHeader(
             pendingSync: pendingSync,
+            refreshing: _refreshing,
             onSync: () => showSyncSheet(context),
-            onNotifications: () => context.push(AppRoutes.notifications),
+            onRefresh: _refreshPage,
             onLogout: () => confirmSignOut(context),
           ),
           Expanded(
@@ -36,7 +55,7 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     _HeroBanner(height: bannerHeight),
                     const SizedBox(height: 14),
-                    const TodayCard(),
+                    TodayCard(key: _todayKey),
                     const SizedBox(height: 20),
                     Text(
                       'Modules',

@@ -259,7 +259,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void openIssue(SupervisorIssue issue) {
+  void openIssue(SupervisorIssue issue, {bool processing = false}) {
     complaint.reset();
     complaint.submitted = true;
     complaint.issueId = issue.id;
@@ -268,13 +268,21 @@ class AppState extends ChangeNotifier {
     complaint.activity = issue.activity;
     complaint.loggedBy = issue.loggedBy;
     complaint.slaLabel = issue.slaLabel;
-    complaint.status = issue.resolved ? ComplaintStatus.resolved : ComplaintStatus.fresh;
+    complaint.status = issue.resolved
+        ? ComplaintStatus.resolved
+        : processing
+            ? ComplaintStatus.inProcessing
+            : ComplaintStatus.fresh;
     complaint.submittedAt = DateTime.tryParse(issue.dateLogged);
     complaint.remoteBefore.addAll(issue.beforePictures);
     complaint.remoteAfter.addAll(issue.afterPictures);
     complaint.timeline.add(
       TimelineEntry(
-        title: issue.resolved ? 'Marked as Resolved' : 'Marked as New',
+        title: issue.resolved
+            ? 'Marked as Completed'
+            : processing
+                ? 'Marked as In Processing'
+                : 'Marked as New',
         at: complaint.submittedAt ?? DateTime.now(),
         color: complaintStatusColor(complaint.status),
       ),
@@ -347,7 +355,7 @@ String complaintStatusLabel(ComplaintStatus status) {
     ComplaintStatus.none => 'No status',
     ComplaintStatus.fresh => 'New',
     ComplaintStatus.inProcessing => 'In Processing',
-    ComplaintStatus.resolved => 'Resolved',
+    ComplaintStatus.resolved => 'Completed',
   };
 }
 
