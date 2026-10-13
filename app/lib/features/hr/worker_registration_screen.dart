@@ -130,7 +130,14 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
     } on SupervisorException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _show(error.message, error.retry ? InlineTone.warning : InlineTone.error);
+      // Two different 409s come back from enroll (spec §5.2):
+      //  - "This face is already registered under {Name} ({Cnic})": the same person is enrolled
+      //    as someone else. Show the message and do NOT reset the employee picked here.
+      //  - "Face already registered.": this employee already has a face and our roster is stale.
+      //    Reload so the Registered pill and the Reset face button appear for this employee.
+      final duplicate = error.message.toLowerCase().contains('already registered under');
+      _show(error.message, InlineTone.error);
+      if (error.retry && !duplicate) await _load();
     }
   }
 
@@ -173,7 +180,7 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
     final selected = _selected;
     final enrolled = selected?['enrolled'] == true;
     return AppPage(
-      title: 'Face registration',
+      title: 'Workers Registration',
       centerTitle: true,
       bottom: PrimaryButton(
         label: enrolled ? 'Face already registered' : 'Register face',

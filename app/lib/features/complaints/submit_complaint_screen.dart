@@ -48,7 +48,7 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
         content: Text('New complaints are opened by the citizen app. Resolve an open complaint from the map.'),
       ),
     );
-    context.go(AppRoutes.complaintMap);
+    context.go(AppRoutes.complaintList);
   }
 
   @override

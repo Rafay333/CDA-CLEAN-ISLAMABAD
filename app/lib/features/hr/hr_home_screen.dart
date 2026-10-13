@@ -69,7 +69,7 @@ class _HrHomeScreenState extends State<HrHomeScreen> {
                   accent: const Color(0xFF2F9E6B),
                   badge: const Color(0xFFE5F6EE),
                   wash: const Color(0xFFD7F3E6),
-                  title: 'Worker Management',
+                  title: 'Workers Registration',
                   subtitle: 'Choose an employee and register their face.',
                   onTap: () => context.push(AppRoutes.workerRegistration),
                 ),

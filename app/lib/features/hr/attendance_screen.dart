@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../components/components.dart';
 import '../../core/supervisor_api.dart';
@@ -45,50 +48,102 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         throw SupervisorException('The camera could not take all the pictures. Please try again.');
       }
       final deviceId = await supervisorDeviceId();
-      final result = await _api.markFace(
+      final preview = await _mark(
         cnic: session.cnic,
         photos: photos,
-        lat: position.latitude,
-        lng: position.longitude,
-        accuracy: position.accuracy,
-        mock: position.isMocked,
+        position: position,
         deviceId: deviceId,
+        confirm: false,
       );
       if (!mounted) return;
-      final action = result['action'] as String?;
-      final employee = Map<String, dynamic>.from(result['employee'] as Map);
+
+      var result = preview;
+      final needsConfirm = preview['requiresConfirm'] == true;
+      final action = preview['action'] as String?;
+      final employee = Map<String, dynamic>.from(preview['employee'] as Map);
+      final match = preview['matchPercent'] as int?;
+
+      if (needsConfirm && (action == 'checkin' || action == 'checkout')) {
+        setState(() {
+          _employee = employee;
+          _match = match;
+          _attendance = preview['attendance'] == null
+              ? null
+              : Map<String, dynamic>.from(preview['attendance'] as Map);
+          _message = action == 'checkin'
+              ? 'Confirm check-in for ${employee['name']}?'
+              : 'Confirm check-out for ${employee['name']}?';
+          _tone = InlineTone.info;
+          _saving = false;
+        });
+        final accepted = await _AttendanceConfirmDialog.show(
+          context,
+          employee: employee,
+          action: action!,
+          matchPercent: match,
+          shift: preview['shift'] as String?,
+        );
+        if (!mounted) return;
+        if (accepted != true) {
+          setState(() {
+            _employee = null;
+            _attendance = null;
+            _match = null;
+            _message = 'Attendance was not marked.';
+            _tone = InlineTone.warning;
+            _saving = false;
+          });
+          return;
+        }
+        setState(() {
+          _saving = true;
+          _message = action == 'checkin' ? 'Marking check-in…' : 'Marking check-out…';
+          _tone = InlineTone.info;
+        });
+        result = await _mark(
+          cnic: session.cnic,
+          photos: photos,
+          position: position,
+          deviceId: deviceId,
+          confirm: true,
+        );
+        if (!mounted) return;
+      }
+
+      final finalAction = result['action'] as String?;
+      final finalEmployee = Map<String, dynamic>.from(result['employee'] as Map);
       final attendance = result['attendance'] == null
           ? null
           : Map<String, dynamic>.from(result['attendance'] as Map);
-      final match = result['matchPercent'] as int?;
-      final marked = action == 'checkin' || action == 'checkout';
+      final finalMatch = result['matchPercent'] as int?;
+      final marked = finalAction == 'checkin' || finalAction == 'checkout';
       setState(() {
-        _employee = employee;
+        _employee = finalEmployee;
         _attendance = attendance;
-        _match = match;
+        _match = finalMatch;
         _message = result['message'] as String? ?? 'Attendance recorded.';
         _tone = marked ? InlineTone.success : InlineTone.warning;
         _saving = false;
-        _lastEmployee = employee;
-        _lastDetail = action == 'checkin'
+        _lastEmployee = finalEmployee;
+        _lastDetail = finalAction == 'checkin'
             ? 'Checked in ${_clock(attendance?['checkIn'])} · ${result['shift']} shift'
-            : action == 'checkout'
+            : finalAction == 'checkout'
                 ? 'Checked out ${_clock(attendance?['checkOut'])} · ${result['shift']} shift'
                 : 'Already in and out · ${result['shift']} shift';
       });
       if (marked) {
         AppStateScope.read(context).updateAttendance((ui) {
-          ui.mark = action == 'checkin' ? AttendanceMark.checkedIn : AttendanceMark.checkedOut;
+          ui.mark = finalAction == 'checkin' ? AttendanceMark.checkedIn : AttendanceMark.checkedOut;
           ui.markedAt = DateTime.now();
           ui.phase = ScanPhase.complete;
         });
       }
       await _AttendanceResultDialog.show(
         context,
-        employee: employee,
+        employee: finalEmployee,
         attendance: attendance,
-        action: action,
-        matchPercent: match,
+        action: finalAction,
+        matchPercent: finalMatch,
       );
       if (!mounted) return;
       setState(() {
@@ -110,6 +165,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
       });
     }
+  }
+
+  Future<Map<String, dynamic>> _mark({
+    required String cnic,
+    required List<Uint8List> photos,
+    required Position position,
+    required String deviceId,
+    required bool confirm,
+  }) {
+    return _api.markFace(
+      cnic: cnic,
+      photos: photos,
+      lat: position.latitude,
+      lng: position.longitude,
+      accuracy: position.accuracy,
+      mock: position.isMocked,
+      deviceId: deviceId,
+      confirm: confirm,
+    );
   }
 
   @override
@@ -238,6 +312,108 @@ class _MatchedBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AttendanceConfirmDialog extends StatelessWidget {
+  const _AttendanceConfirmDialog({
+    required this.employee,
+    required this.action,
+    required this.matchPercent,
+    required this.shift,
+  });
+
+  final Map<String, dynamic> employee;
+  final String action;
+  final int? matchPercent;
+  final String? shift;
+
+  static Future<bool?> show(
+    BuildContext context, {
+    required Map<String, dynamic> employee,
+    required String action,
+    required int? matchPercent,
+    required String? shift,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _AttendanceConfirmDialog(
+        employee: employee,
+        action: action,
+        matchPercent: matchPercent,
+        shift: shift,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isCheckIn = action == 'checkin';
+    final title = isCheckIn ? 'Confirm check-in' : 'Confirm check-out';
+    final color = isCheckIn ? AppColors.success : AppColors.warning;
+    final shiftLabel = (shift == null || shift!.isEmpty) ? '' : ' · $shift shift';
+    return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppType.title.copyWith(fontSize: 20, color: color),
+          ),
+          const SizedBox(height: 16),
+          EmployeePhoto(
+            employeeId: employee['employeeId'] as int,
+            registeredAt: employee['faceRegisteredAt'] as String?,
+            enrolled: employee['enrolled'] == true,
+            size: 96,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '${employee['name']}',
+            textAlign: TextAlign.center,
+            style: AppType.section.copyWith(fontSize: 20),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ID ${employee['employeeId']} · ${employee['role']}$shiftLabel',
+            textAlign: TextAlign.center,
+            style: AppType.caption,
+          ),
+          if (matchPercent != null) ...[
+            const SizedBox(height: 4),
+            Text('Face match: $matchPercent%', style: AppType.caption),
+          ],
+          const SizedBox(height: 12),
+          Text(
+            isCheckIn
+                ? 'Mark check-in for this worker?'
+                : 'Mark check-out for this worker?',
+            textAlign: TextAlign.center,
+            style: AppType.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PrimaryButton(
+              label: 'Yes, mark attendance',
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: 8),
+            OutlineButton(
+              label: 'No',
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/pakistan_time.dart';
+
 const supervisorBaseUrl = 'https://cda-swm.asktech.com.pk:5010';
 
 const _authKey = 'CDA-EMP-8fK2mN9qR4vX7wP1sT6yH3bL5cJ0';
@@ -342,6 +344,8 @@ class SupervisorApi {
     required List<UploadPhoto> photos,
     String? notes,
     String? resolvedByName,
+    DateTime? resolvedAt,
+    String? resolvedAtIso,
   }) async {
     final files = _files(photos, 'after');
     if (files.isEmpty) {
@@ -354,6 +358,12 @@ class SupervisorApi {
     }
     if (resolvedByName != null && resolvedByName.trim().isNotEmpty) {
       form.fields.add(MapEntry('resolved_by_name', resolvedByName.trim()));
+    }
+    final atIso = (resolvedAtIso != null && resolvedAtIso.trim().isNotEmpty)
+        ? resolvedAtIso.trim()
+        : (resolvedAt != null ? toPakistanIso(resolvedAt) : null);
+    if (atIso != null) {
+      form.fields.add(MapEntry('resolved_at', atIso));
     }
     form.files.addAll(files);
     final data = await _send(dio.post('/api/supervisor/issues/$id/resolve', data: form));
@@ -532,6 +542,7 @@ class SupervisorApi {
     required double accuracy,
     required bool mock,
     required String deviceId,
+    bool confirm = true,
   }) async {
     final data = _map(
       await _send(
@@ -544,6 +555,7 @@ class SupervisorApi {
             'acc': accuracy.toString(),
             'mock': mock.toString(),
             'deviceId': deviceId,
+            'confirm': confirm.toString(),
           }),
         ),
       ),
@@ -553,11 +565,13 @@ class SupervisorApi {
     }
     final match = data['matchPercent'];
     final attendance = data['attendance'];
+    final requiresConfirm = data['requiresConfirm'] == true || data['confirmed'] == false;
     return {
       'action': _optional(data['action']),
       'message': _text(data['message']).isEmpty ? 'Attendance recorded.' : _text(data['message']),
       'matchPercent': match is num ? match.round() : int.tryParse('${match ?? ''}'),
       'shift': _shiftName(data['shift']),
+      'requiresConfirm': requiresConfirm,
       'employee': data['employee'] is Map
           ? _facePerson(Map<String, dynamic>.from(data['employee'] as Map))
           : _facePerson(data),
@@ -644,9 +658,18 @@ class SupervisorApi {
       final response = await call;
       return response.data;
     } on DioException catch (error) {
-      throw SupervisorException(_message(error), retry: error.response?.statusCode == 409);
+      throw SupervisorException(_message(error), retry: _isRetryable(error));
     }
   }
+}
+
+bool _isRetryable(DioException error) {
+  if (error.response?.statusCode == 409) return true;
+  return error.type == DioExceptionType.connectionError ||
+      error.type == DioExceptionType.connectionTimeout ||
+      error.type == DioExceptionType.receiveTimeout ||
+      error.type == DioExceptionType.sendTimeout ||
+      error.type == DioExceptionType.unknown;
 }
 
 String supervisorMediaUrl(String path) {

@@ -14,7 +14,7 @@ class ComplaintDetailsScreen extends StatelessWidget {
   void _takeAction(BuildContext context, ComplaintDraft complaint) {
     if (complaint.issueId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Open a complaint from the map first.')),
+        const SnackBar(content: Text('Open a complaint from the list first.')),
       );
       return;
     }
@@ -42,7 +42,7 @@ class ComplaintDetailsScreen extends StatelessWidget {
           if (complaint.issueId == null)
             const InlineMessage(
               tone: InlineTone.warning,
-              message: 'Open a complaint from the map. New complaints are created by the citizen app.',
+              message: 'Open a complaint from the list. New complaints are created by the citizen app.',
             ),
           if (!complaint.submitted) const SizedBox(height: 12),
           Row(

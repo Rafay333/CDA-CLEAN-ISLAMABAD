@@ -27,6 +27,10 @@ const upload = multer({
 
 const faces = new Map<number, number[][]>();
 let facesLoaded = false;
+
+// Attendance recognises a face at <= 0.45. Registration refuses a face that sits within
+// this wider margin of any other employee so one person can never hold two records.
+const duplicateFaceDistance = 0.55;
 let worker: FaceWorker | null = null;
 
 const employeeSql = `SELECT e.EmployeeId, e.Name, e.Role, e.Cnic, e.Contact, e.Salary, e.Status,
@@ -301,10 +305,10 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
     });
     if (!samePerson(encodings)) throw new ApiError(400, 'FACE', 'The three photos do not look like the same person. Try again.');
     const duplicate = identify(faces, encodings, employeeId);
-    if (duplicate.id >= 0 && duplicate.best <= 0.5) {
+    if (duplicate.id >= 0 && duplicate.best <= duplicateFaceDistance) {
       const other = await employee(config, duplicate.id);
       const who = other ? `${other.name} (${other.cnic})` : String(duplicate.id);
-      throw new ApiError(400, 'FACE', `This face is already registered under ${who}.`);
+      throw new ApiError(409, 'FACE_DUPLICATE', `This face is already registered under ${who}. One person cannot be registered twice.`);
     }
     const pool = await smartSwm(config);
     const tx = new sql.Transaction(pool);
@@ -372,7 +376,32 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
     }
     const open = await today(config, person.employeeId, shift);
     let action: 'checkin' | 'checkout' | 'complete';
-    if (!open) {
+    if (!open) action = 'checkin';
+    else if (!open.checkOut) action = 'checkout';
+    else action = 'complete';
+
+    // Preview match only — attendance is written when confirm=true.
+    const confirmed = String(req.body.confirm ?? '').toLowerCase() === 'true';
+    if (!confirmed && action !== 'complete') {
+      const label = shift === 'Day' ? '' : ` (${shift} shift)`;
+      const message = action === 'checkin'
+        ? `Confirm check-in for ${person.name}${label}?`
+        : `Confirm check-out for ${person.name}${label}?`;
+      res.json({
+        success: true,
+        requiresConfirm: true,
+        confirmed: false,
+        action,
+        shift,
+        message,
+        matchPercent: Math.round((1 - match.best) * 100),
+        employee: person,
+        attendance: open,
+      });
+      return;
+    }
+
+    if (action === 'checkin') {
       await query(
         config,
         `INSERT INTO Attendances (EmployeeId, [Date], CheckIn, VerifiedByApp, Source, GeoTag, DeviceId, CreatedBy, CreatedAt, StatusId, Similarity, Shift)
@@ -388,16 +417,14 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
           shift,
         },
       );
-      action = 'checkin';
-    } else if (!open.checkOut) {
+    } else if (action === 'checkout') {
       await query(
         config,
         `UPDATE Attendances SET CheckOut = CAST(SYSDATETIME() AS time), ModifiedBy = @by, ModifiedAt = SYSUTCDATETIME()
          WHERE AttendanceId = @id AND CheckOut IS NULL`,
-        { id: open.attendanceId, by: clip(person.name, 100) },
+        { id: open!.attendanceId, by: clip(person.name, 100) },
       );
-      action = 'checkout';
-    } else action = 'complete';
+    }
     const attendance = await today(config, person.employeeId, shift);
     const label = shift === 'Day' ? '' : ` (${shift} shift)`;
     const message = action === 'checkin'
@@ -406,6 +433,9 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
         ? `Checked out ${person.name}${label}.`
         : `${person.name} is already checked in and out for this ${shift.toLowerCase()} shift.`;
     res.json({
+      success: true,
+      requiresConfirm: false,
+      confirmed: true,
       action,
       shift,
       message,

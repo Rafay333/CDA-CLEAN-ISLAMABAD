@@ -8,6 +8,7 @@ import '../features/authentication/login_screen.dart';
 import '../features/authentication/splash_screen.dart';
 import '../features/complaints/after_photo_screen.dart';
 import '../features/complaints/complaint_details_screen.dart';
+import '../features/complaints/complaint_list_screen.dart';
 import '../features/complaints/complaint_map_screen.dart';
 import '../features/complaints/complaints_home_screen.dart';
 import '../features/complaints/submit_complaint_screen.dart';
@@ -138,6 +139,14 @@ GoRouter createAppRouter() {
       GoRoute(
         path: AppRoutes.complaintMap,
         builder: (context, state) => const ComplaintMapScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.complaintList,
+        builder: (context, state) => const ComplaintListScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.openComplaints,
+        builder: (context, state) => const ComplaintListScreen(openOnly: true),
       ),
       GoRoute(
         path: AppRoutes.complaintDetails,

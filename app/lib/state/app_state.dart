@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/pending_resolve_store.dart';
 import '../core/supervisor_api.dart';
 
 enum ComplaintStatus { none, fresh, inProcessing, resolved }
@@ -185,6 +186,8 @@ class AppState extends ChangeNotifier {
   final attendance = AttendanceUi();
   DateTime? wasteSyncedAt;
   DateTime? complaintSyncedAt;
+  int pendingResolveCount = 0;
+  List<PendingResolve> pendingResolves = const [];
 
   Future<void> get ready => _ready;
 
@@ -195,18 +198,12 @@ class AppState extends ChangeNotifier {
     return synced == null || saved.isAfter(synced);
   }
 
-  bool get complaintPendingSync {
-    if (!complaint.submitted) return false;
-    final saved = complaint.submittedAt;
-    final synced = complaintSyncedAt;
-    if (saved == null) return synced == null;
-    return synced == null || saved.isAfter(synced);
-  }
+  bool get complaintPendingSync => pendingResolveCount > 0;
 
   int get pendingSyncCount {
     var count = 0;
     if (wastePendingSync) count++;
-    if (complaintPendingSync) count++;
+    count += pendingResolveCount;
     return count;
   }
 
@@ -230,6 +227,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshPendingResolves() async {
+    pendingResolves = await PendingResolveStore.list();
+    pendingResolveCount = pendingResolves.length;
+    if (pendingResolveCount == 0 && complaint.status == ComplaintStatus.resolved) {
+      complaintSyncedAt = complaint.submittedAt ?? DateTime.now();
+    }
+    notifyListeners();
+  }
+
   Future<void> restore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -242,6 +248,13 @@ class AppState extends ChangeNotifier {
       }
     } catch (_) {
       session = null;
+    }
+    try {
+      pendingResolves = await PendingResolveStore.list();
+      pendingResolveCount = pendingResolves.length;
+    } catch (_) {
+      pendingResolves = const [];
+      pendingResolveCount = 0;
     }
     notifyListeners();
   }
@@ -324,6 +337,9 @@ class AppState extends ChangeNotifier {
     attendance.reset();
     wasteSyncedAt = null;
     complaintSyncedAt = null;
+    pendingResolves = const [];
+    pendingResolveCount = 0;
+    await PendingResolveStore.clearAll();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
     notifyListeners();

@@ -23,6 +23,8 @@ class AppRoutes {
   static const recordDetails = '/waste/record';
   static const complaints = '/complaints';
   static const complaintMap = '/complaints/map';
+  static const complaintList = '/complaints/list';
+  static const openComplaints = '/complaints/open';
   static const complaintDetails = '/complaints/details';
   static const submitComplaint = '/complaints/submit';
   static const afterPhotos = '/complaints/after-photos';

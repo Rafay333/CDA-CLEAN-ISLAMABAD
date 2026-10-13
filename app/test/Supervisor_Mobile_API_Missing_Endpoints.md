@@ -135,7 +135,7 @@ Dropdown lists in the app (`WasteCatalog`) are empty: activities, zones, union c
 | Submit complaint | description, before photos, GPS (not connected yet) | none (`POST /issues` is 405) | Citizen app can create issues. This supervisor app cannot. |
 | Complaint details | status New → In Processing → Resolved, timeline, follow-up note | `POST /issues/{id}/resolve` | Resolve needs 1–10 after photos and jumps to resolved. The app’s middle status does not exist. Follow-up text has nowhere to go until resolve, and the local complaint has no id. |
 | Complaints map | search text, filters All / New / In Processing / Resolved, UC polygons | `GET /issues` | Filters are `all`, `pending`, `resolved` only. No search. No polygon payload. Sample pin has no coordinates. |
-| Worker management | pick employee, shift Day / Evening / Night, 3 face photos, reset face | `GET /employees` | Roster has no `shift`, `enrolled`, `salary`, `faceRegisteredAt`, or photo URL. |
+| Workers Registration | pick employee, shift Day / Evening / Night, 3 face photos, reset face | `GET /employees` | Roster has no `shift`, `enrolled`, `salary`, `faceRegisteredAt`, or photo URL. |
 | Attendance | 3 face photos, GPS accuracy, mock-GPS flag, device id. Result is check-in or check-out plus match percent. | `POST /attendance` | That route stores a roster tick (`employee_id`, `present`, `check_in`, `check_out`, `beat`, `source`). It does not match a face. |
 | Attendance log | date, search by name / CNIC / employee id. Row shows In/Out, similarity, geo. | `GET /attendance` | Rows have no similarity, shift, or face photo. |
 | HR summary tile | not on the home screen | `GET /hr-summary` | Live and usable. The home screen does not call it. |
@@ -552,8 +552,9 @@ Multipart.
 | `shift` | Yes. `Day`, `Evening`, or `Night` |
 | `image0`, `image1`, `image2` | Yes. Exactly 3. The app takes them 5 seconds apart. |
 
-`409` when a face is already enrolled. Body: `{ "success": false, "message": "Face already registered." }`. The app treats HTTP 409 as “ask the user to reset and try again.”  
-`422` when the shift is missing, a photo is missing, or the face cannot be detected. `message` is shown on the phone.  
+`409` when a face is already enrolled for **this** employee. Body: `{ "success": false, "message": "Face already registered." }`. The app treats HTTP 409 as “ask the user to reset and try again.”  
+`409` when the face belongs to **another** employee. This check is mandatory: before saving, compare the three new encodings against every stored encoding of every other employee (any contractor). If the smallest distance is `<= 0.55`, do **not** save and answer `{ "success": false, "message": "This face is already registered under Ahmed Raza (3520223456782). One person cannot be registered twice." }`. The same person must never hold two employee records; the only way to move a face is `reset-face` on the old record first.  
+`422` when the shift is missing, a photo is missing, the face cannot be detected, or the three photos are not the same person (pairwise distance `> 0.45`). `message` is shown on the phone.  
 Success `200`:
 
 ```json
@@ -582,14 +583,40 @@ Multipart. This is check-in / check-out, not the roster save.
 | `acc` | Yes | Metres. The app blocks accuracy worse than 300 m before calling. Still reject `acc` &gt; 300 with 422. |
 | `mock` | Yes | `true` / `false`. `true` → **422** `"Fake GPS detected."` |
 | `deviceId` | Yes | Stable id from the phone |
+| `confirm` | No | `true` / `false`. Default legacy behaviour is mark immediately. When `false` and the person still needs check-in or check-out, **do not write attendance** — return a preview so the phone can show face + name and ask Yes / No. When `true`, write the row. |
 
 Match the face to an enrolled employee of this contractor.
 
-Success `200`:
+Preview success `200` when `confirm=false` and action is `checkin` or `checkout`:
 
 ```json
 {
   "success": true,
+  "requiresConfirm": true,
+  "confirmed": false,
+  "action": "checkin",
+  "message": "Confirm check-in for Ahmed Raza?",
+  "matchPercent": 92,
+  "shift": "Day",
+  "employee": {
+    "employeeId": 2,
+    "name": "Ahmed Raza",
+    "cnic": "3520223456782",
+    "role": "Driver",
+    "enrolled": true,
+    "faceRegisteredAt": "2026-10-11T11:45:00+05:00"
+  },
+  "attendance": null
+}
+```
+
+Marked success `200` when `confirm=true` (or legacy servers that always mark):
+
+```json
+{
+  "success": true,
+  "requiresConfirm": false,
+  "confirmed": true,
   "action": "checkin",
   "message": "Checked in.",
   "matchPercent": 92,
@@ -614,8 +641,8 @@ Success `200`:
 
 `action` is `checkin`, `checkout`, or `complete`.
 
-- No open row today → `checkin`. Store check-in time and geo.
-- Open check-in and no check-out → `checkout`. Store check-out.
+- No open row today → `checkin`. Store check-in time and geo **only when `confirm=true`**.
+- Open check-in and no check-out → `checkout`. Store check-out **only when `confirm=true`**.
 - Both already stored today → `complete`. Do not insert a third row. `message` explains that the worker is already in and out.
 
 `422` when the face matches nobody, GPS is mocked, accuracy is over 300 m, or fewer than 3 images are sent.  
