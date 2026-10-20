@@ -25,12 +25,8 @@ class TransferStationScreen extends StatelessWidget {
         final messenger = ScaffoldMessenger.of(context);
         if (uploads.isEmpty) {
           messenger.showSnackBar(
-            const SnackBar(content: Text('Add a photo. Transfer station pictures are saved as TCP evidence.')),
+            const SnackBar(content: Text('Add a photo.')),
           );
-          return;
-        }
-        if (uploads.length > 10) {
-          messenger.showSnackBar(const SnackBar(content: Text('The server accepts 10 photos at a time.')));
           return;
         }
         final session = state.session;
@@ -39,16 +35,29 @@ class TransferStationScreen extends StatelessWidget {
           return;
         }
         try {
-          final saved = await SupervisorApi().uploadEvidence(
+          final saved = await SupervisorApi().saveFieldRecord(
             cnic: session.cnic,
-            activityCode: 'tcp',
-            photos: uploads,
-            geoTag: geoTagFrom(draft.latitude, draft.longitude) ?? await currentGeoTag(),
+            kind: 'transfer',
+            area: 'Rural',
+            ucCode: draft.uc,
+            primarySiteId: draft.primarySiteId,
+            locationId: draft.locationId,
+            vehicleType: draft.vehicleType,
+            vehicleNumber: draft.vehicleNumber,
+            mode: draft.zeroWaste ? 'zero_waste' : 'vehicle_trips',
+            tcpName: draft.tcpName,
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+            before: uploadPhotos(draft.beforePhotos),
+            after: uploadPhotos(draft.afterPhotos),
           );
           if (!context.mounted) return;
-          state.updateWaste((item) => item.savedAt = DateTime.now());
+          state.updateWaste((item) {
+            item.savedAt = DateTime.now();
+            item.recordId = saved.id;
+          });
           state.noteWasteSynced();
-          messenger.showSnackBar(SnackBar(content: Text(saved.message)));
+          messenger.showSnackBar(SnackBar(content: Text(saved.message ?? 'Record saved.')));
           context.push(AppRoutes.recordDetails);
         } on SupervisorException catch (error) {
           messenger.showSnackBar(SnackBar(content: Text(error.message)));

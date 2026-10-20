@@ -9,10 +9,15 @@ import type { AppConfig } from './config.js';
 import { ApiError } from './errors.js';
 import { FaceWorker, defaultModelsDir, type BurstResult } from './face-worker.js';
 import {
+  duplicateFaceDistance,
   eyeDistance,
+  findDuplicate,
   identify,
+  minFaceSize,
   packDoubles,
   packEncoding,
+  recogniseDistance,
+  recognised,
   residual,
   samePerson,
   unpackDoubles,
@@ -28,10 +33,11 @@ const upload = multer({
 const faces = new Map<number, number[][]>();
 let facesLoaded = false;
 
-// Attendance recognises a face at <= 0.45. Registration refuses a face that sits within
-// this wider margin of any other employee so one person can never hold two records.
-const duplicateFaceDistance = 0.55;
+// Thresholds live in face-rules.ts so the worker, the matcher, and the spec agree.
 let worker: FaceWorker | null = null;
+
+const tooSmall = (index: number) =>
+  new ApiError(400, 'FACE_SMALL', `Photo ${index + 1}: the face is too small. Hold the phone closer so the face fills the oval.`);
 
 const employeeSql = `SELECT e.EmployeeId, e.Name, e.Role, e.Cnic, e.Contact, e.Salary, e.Status,
   e.CreatedBy, e.CreatedAt, e.ModifiedBy, e.ModifiedAt, e.StatusId, s.Name AS StatusName,
@@ -300,12 +306,14 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
         if (encoded.count !== 1 || !encoded.encoding) {
           throw new ApiError(400, 'FACE', `Photo ${i + 1}: exactly one clear face is needed. Try again in good light.`);
         }
+        if (encoded.size < minFaceSize) throw tooSmall(i);
         encodings.push(encoded.encoding);
       }
     });
     if (!samePerson(encodings)) throw new ApiError(400, 'FACE', 'The three photos do not look like the same person. Try again.');
-    const duplicate = identify(faces, encodings, employeeId);
-    if (duplicate.id >= 0 && duplicate.best <= duplicateFaceDistance) {
+    const confirmDifferent = String(req.body.confirm_different ?? req.body.confirmDifferent ?? '').toLowerCase() === 'true';
+    const duplicate = findDuplicate(faces, encodings, employeeId);
+    if (!confirmDifferent && duplicate.id >= 0 && duplicate.best <= duplicateFaceDistance) {
       const other = await employee(config, duplicate.id);
       const who = other ? `${other.name} (${other.cnic})` : String(duplicate.id);
       throw new ApiError(409, 'FACE_DUPLICATE', `This face is already registered under ${who}. One person cannot be registered twice.`);
@@ -352,9 +360,11 @@ export function mountHrAttendance(app: Express, config: AppConfig) {
     const images = imagesOf(req);
     const burst = await withFiles(images, (paths) => engine(config).burst(paths));
     if (!burst.ok) throw new ApiError(400, 'FACE', burst.error);
+    const small = (burst.sizes ?? []).findIndex((size) => size < minFaceSize);
+    if (small >= 0) throw tooSmall(small);
     const match = identify(faces, burst.encodings);
-    if (match.id < 0 || match.best > 0.45) throw new ApiError(400, 'FACE', 'Face not recognised. Register this person first.');
-    if (match.second - match.best < 0.08) {
+    if (match.id < 0 || match.best > recogniseDistance) throw new ApiError(400, 'FACE', 'Face not recognised. Register this person first.');
+    if (!recognised(match)) {
       throw new ApiError(400, 'FACE', 'Not sure who this is. Try again in good light, looking straight at the camera.');
     }
     const person = await employee(config, match.id);

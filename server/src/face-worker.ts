@@ -5,9 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiError } from './errors.js';
 
-export type EncodeResult = { count: number; encoding: number[] | null; error?: string | null };
+/** `size` is the detected face width in pixels (0 when no single face was found). */
+export type EncodeResult = { count: number; size: number; encoding: number[] | null; error?: string | null };
 export type BurstResult =
-  | { ok: true; encodings: number[][]; feat: number[]; motion: number; blink: number }
+  | { ok: true; encodings: number[][]; sizes: number[]; feat: number[]; motion: number; blink: number }
   | { ok: false; error: string };
 
 type Pending = { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void };

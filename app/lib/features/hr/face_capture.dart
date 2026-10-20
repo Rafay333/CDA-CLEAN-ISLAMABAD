@@ -9,7 +9,8 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 
 /// Front-camera capture copied from the attendance mobile app.
-/// Registration takes 3 photos, 5 seconds apart. Attendance takes 3 photos in one countdown.
+/// Registration takes 3 photos at 1080p, a few seconds apart. Attendance takes
+/// 3 photos at 720p in one short countdown.
 class FaceCapturePage extends StatefulWidget {
   const FaceCapturePage({super.key, required this.title, required this.burst});
 
@@ -38,10 +39,23 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
     duration: const Duration(milliseconds: 1800),
   )..repeat(reverse: true);
   String _info = 'Starting camera...';
-  int _count = 5;
+  int _count = 3;
   bool _pause = false;
   bool _shooting = false;
   final List<Uint8List> _taken = [];
+
+  /// Registration photos deliberately differ so the saved template covers how the
+  /// person looks day to day. Photo 2 is taken without glasses: a face registered only
+  /// with glasses on is often not recognised with them off.
+  /// Three looks cover eyes/nose structure while ignoring day-to-day glasses or beard.
+  static const _registrationSteps = [
+    'Photo 1 of 3 - HD · look straight (glasses on if you wear them)',
+    'Photo 2 of 3 - HD · no glasses, eyes and nose clearly visible',
+    'Photo 3 of 3 - HD · your usual beard or mustache, look straight',
+  ];
+
+  static String _stepInfo(int photoIndex) =>
+      _registrationSteps[photoIndex.clamp(0, _registrationSteps.length - 1)];
 
   @override
   void initState() {
@@ -49,9 +63,40 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
     _start();
   }
 
+  Future<CameraController> _open(CameraDescription camera) async {
+    // Registration: 1080p is enough for dlib and uploads in seconds, not 4K.
+    // Attendance stays at 720p so the queue is not waiting on a huge upload.
+    final presets = widget.burst
+        ? const [ResolutionPreset.high, ResolutionPreset.medium]
+        : const [ResolutionPreset.veryHigh, ResolutionPreset.high, ResolutionPreset.medium];
+    for (var i = 0; i < presets.length; i++) {
+      final controller = CameraController(
+        camera,
+        presets[i],
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+      try {
+        await controller.initialize();
+        try {
+          await controller.setFocusMode(FocusMode.auto);
+          await controller.setFlashMode(FlashMode.off);
+        } catch (_) {}
+        if (!widget.burst) {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+        return controller;
+      } catch (_) {
+        await controller.dispose();
+        if (i == presets.length - 1) rethrow;
+      }
+    }
+    throw StateError('Camera could not be started.');
+  }
+
   Future<void> _start() async {
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(const Duration(milliseconds: 150));
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         if (mounted) setState(() => _info = 'No camera was found on this device.');
@@ -61,12 +106,7 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
         (item) => item!.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       )!;
-      final controller = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-      await controller.initialize();
+      final controller = await _open(camera);
       if (!mounted) {
         await controller.dispose();
         return;
@@ -74,8 +114,8 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
       setState(() {
         _camera = controller;
         _info = widget.burst
-            ? 'Look at the screen and blink naturally'
-            : 'Photo 1 of 3 - look straight';
+            ? 'Fill the oval with the face, look at the screen and blink naturally'
+            : _stepInfo(0);
       });
       _countdown();
     } catch (error) {
@@ -93,7 +133,7 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
       if (camera == null || !camera.value.isInitialized) return;
       if (widget.burst) {
         if (_shooting) return;
-        if (_count == 4 || _count == 2 || _count == 1) {
+        if (_count == 3 || _count == 2 || _count == 1) {
           _shooting = true;
           try {
             final shot = await camera.takePicture();
@@ -125,14 +165,14 @@ class _FaceCapturePageState extends State<FaceCapturePage> with SingleTickerProv
         final saved = _taken.length;
         setState(() {
           _pause = true;
-          _info = 'Photo $saved saved.\nGet ready for photo ${saved + 1} of 3...';
+          _info = 'Photo $saved saved.\nNext: ${_stepInfo(saved)}';
         });
-        await Future<void>.delayed(const Duration(seconds: 3));
+        await Future<void>.delayed(const Duration(milliseconds: 700));
         if (!mounted) return;
         setState(() {
           _pause = false;
-          _count = 5;
-          _info = 'Photo ${saved + 1} of 3 - look straight';
+          _count = 3;
+          _info = _stepInfo(saved);
         });
         _countdown();
       } catch (error) {

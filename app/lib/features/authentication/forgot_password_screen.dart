@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
+import '../../core/supervisor_api.dart';
 import '../../utils/validators.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -13,7 +14,8 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _cnic = TextEditingController();
   String? _error;
-  bool _sent = false;
+  String? _message;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -21,38 +23,61 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  void _submit() {
-    final error = Validators.cnic(_cnic.text);
+  Future<void> _submit() async {
+    final digits = _cnic.text.replaceAll(RegExp(r'\D'), '');
+    final error = Validators.cnic(digits);
+    if (error != null) {
+      setState(() {
+        _error = error;
+        _message = null;
+      });
+      return;
+    }
     setState(() {
-      _error = error;
-      _sent = error == null;
+      _error = null;
+      _busy = true;
+      _message = null;
     });
+    try {
+      final message = await SupervisorApi().forgotPassword(digits);
+      if (!mounted) return;
+      setState(() => _message = message);
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return AppPage(
       title: 'Forgot Password',
-      bottom: PrimaryButton(label: 'Continue', onPressed: _submit),
+      bottom: PrimaryButton(
+        label: 'Continue',
+        loading: _busy,
+        onPressed: _busy ? null : _submit,
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           const InlineMessage(
-            message: 'Password reset will be available when accounts are connected. Nothing is sent from this screen.',
+            message: 'Enter your 13-digit CNIC. If an account exists, reset instructions are sent.',
           ),
           const SizedBox(height: 16),
           TextInput(
             label: 'CNIC',
             controller: _cnic,
-            hint: 'e.g. 12345-1234567-1',
+            hint: '13 digits',
             keyboardType: TextInputType.number,
             errorText: _error,
           ),
-          if (_sent) ...[
+          if (_message != null) ...[
             const SizedBox(height: 16),
-            const InlineMessage(
+            InlineMessage(
               tone: InlineTone.success,
-              message: 'CNIC format looks valid. Reset instructions are not sent until messaging is connected.',
+              message: _message!,
             ),
           ],
         ],

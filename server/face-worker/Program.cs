@@ -33,15 +33,15 @@ while ((line = Console.ReadLine()) != null)
         var op = root.GetProperty("op").GetString();
         if (op == "encode")
         {
-            var raw = Encode(fr, root.GetProperty("path").GetString()!, out var count, out var problem);
-            Write(new { id, count, encoding = raw, error = problem });
+            var raw = Encode(fr, root.GetProperty("path").GetString()!, out var count, out var size, out var problem);
+            Write(new { id, count, size, encoding = raw, error = problem });
         }
         else if (op == "burst")
         {
             var paths = root.GetProperty("paths").EnumerateArray().Select(x => x.GetString()!).ToList();
             var burst = Burst(fr, paths, out var error);
             if (burst == null) Write(new { id, ok = false, error });
-            else Write(new { id, ok = true, encodings = burst.Value.encodings, feat = burst.Value.feat, motion = burst.Value.motion, blink = burst.Value.blink });
+            else Write(new { id, ok = true, encodings = burst.Value.encodings, sizes = burst.Value.sizes, feat = burst.Value.feat, motion = burst.Value.motion, blink = burst.Value.blink });
         }
         else Write(new { id, ok = false, error = "Unknown face operation." });
     }
@@ -57,18 +57,30 @@ static void Write(object value)
     Console.Out.Flush();
 }
 
-static double[]? Encode(FaceRecognition fr, string path, out int count, out string? problem)
+// Registration photos are encoded with jitter: dlib averages the encoding over several
+// slightly shifted/flipped crops, which gives a steadier template than a single pass.
+// dlib: more jitters → steadier embedding (eyes/nose/jaw), less sway from beard or glasses.
+const int EnrolJitters = 10;
+const int AttendJitters = 5;
+
+static int Width(Location loc) => Math.Abs(loc.Right - loc.Left);
+
+static double[]? Encode(FaceRecognition fr, string path, out int count, out int size, out string? problem)
 {
     count = 0;
+    size = 0;
     problem = null;
     var tmp = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".jpg");
     try
     {
         File.WriteAllBytes(tmp, Upright(File.ReadAllBytes(path)));
         using var img = FaceRecognition.LoadImageFile(tmp);
-        var found = fr.FaceEncodings(img).ToList();
-        count = found.Count;
-        if (count != 1) { foreach (var face in found) Done(face); return null; }
+        var locs = fr.FaceLocations(img).ToList();
+        count = locs.Count;
+        if (count != 1) return null;
+        size = Width(locs[0]);
+        var found = fr.FaceEncodings(img, locs, EnrolJitters).ToList();
+        if (found.Count != 1) { foreach (var face in found) Done(face); count = found.Count; return null; }
         try { return Raw(found[0]); }
         finally { Done(found[0]); }
     }
@@ -81,10 +93,11 @@ static double[]? Encode(FaceRecognition fr, string path, out int count, out stri
     finally { try { File.Delete(tmp); } catch { } }
 }
 
-static (List<double[]> encodings, double[] feat, double motion, double blink)? Burst(FaceRecognition fr, List<string> paths, out string? error)
+static (List<double[]> encodings, List<int> sizes, double[] feat, double motion, double blink)? Burst(FaceRecognition fr, List<string> paths, out string? error)
 {
     error = null;
     var encodings = new List<double[]>();
+    var sizes = new List<int>();
     var landmarks = new List<double[]>();
     var ears = new List<double>();
     double iod = 0;
@@ -99,7 +112,8 @@ static (List<double[]> encodings, double[] feat, double motion, double blink)? B
             var locs = fr.FaceLocations(img).ToList();
             if (locs.Count != 1) { error = $"Picture {i + 1}: no single clear face found. Try again in good light."; return null; }
             detected = true;
-            var enc = fr.FaceEncodings(img, locs).First();
+            sizes.Add(Width(locs[0]));
+            var enc = fr.FaceEncodings(img, locs, AttendJitters).First();
             encodings.Add(Raw(enc));
             Done(enc);
             var lm = fr.FaceLandmark(img, locs).First();
@@ -127,12 +141,12 @@ static (List<double[]> encodings, double[] feat, double motion, double blink)? B
     }
     for (int i = 0; i < encodings.Count; i++)
         for (int j = i + 1; j < encodings.Count; j++)
-            if (Dist(encodings[i], encodings[j]) > 0.45) { error = "The pictures do not look like the same person. Try again."; return null; }
+            if (Dist(encodings[i], encodings[j]) > 0.60) { error = "The pictures do not look like the same person. Try again."; return null; }
     double motion = 0;
     for (int i = 0; i < landmarks.Count; i++)
         for (int j = i + 1; j < landmarks.Count; j++)
             motion = Math.Max(motion, Residual(landmarks[i], landmarks[j]) / Math.Max(iod, 1e-6));
-    return (encodings, landmarks.Count > 1 ? landmarks[1] : landmarks[0], motion, ears.Max() - ears.Min());
+    return (encodings, sizes, landmarks.Count > 1 ? landmarks[1] : landmarks[0], motion, ears.Max() - ears.Min());
 }
 
 static double Dist(double[] a, double[] b)

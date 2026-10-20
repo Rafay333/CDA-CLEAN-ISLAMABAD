@@ -1,56 +1,110 @@
+import '../../core/supervisor_api.dart';
+import '../complaints/uc_boundaries.dart';
+
 /// Lookup lists for the solid waste forms.
 ///
-/// Activities, zones, union councils, container types, and TCP names are
-/// empty until the real lists are added. Screens only read these values.
+/// Loaded from `GET /api/supervisor/catalog`. Zone/UC XML is the fallback.
 class WasteCatalog {
   const WasteCatalog._();
 
-  static const activities = <String>[];
-
-  static const zones = <String>[];
-
-  static const containerTypes = <String>[];
-
   static const containerTagging = 'Tagging of Containers';
-
   static const transferModes = <String>['Vehicle trips', 'Zero Waste'];
-
   static const picturesPerUc = 2;
 
-  static const unlimitedActivities = <String>{};
+  static SupervisorCatalog _catalog = const SupervisorCatalog();
+  static List<UcArea> _areas = const [];
+  static var _loaded = false;
 
-  static bool allowsUnlimitedPictures(String? activity) {
-    return activity != null && unlimitedActivities.contains(activity);
+  static SupervisorCatalog get data => _catalog;
+
+  static List<String> get zones {
+    if (_catalog.zones.isNotEmpty) return [for (final zone in _catalog.zones) zone.code];
+    return const ['Zone-4', 'Zone-5'];
   }
 
-  /// Null means the activity accepts any number of pictures.
+  static List<String> get containerTypes => _catalog.containerTypes;
+  static List<String> get tcpNames => _catalog.tcpNames;
+  static List<String> get vehicleTypes => _catalog.vehicleTypes;
+  static List<CatalogActivity> get activities => _catalog.activities;
+  static List<CatalogSite> get primarySites => _catalog.primarySites;
+  static List<CatalogLocation> get locations => _catalog.locations;
+
+  static bool allowsUnlimitedPictures(String? activity) {
+    for (final item in _catalog.activities) {
+      if (item.name == activity || item.code == activity) return item.unlimitedPictures;
+    }
+    return false;
+  }
+
   static int? pictureLimit(String? activity) {
     if (allowsUnlimitedPictures(activity)) return null;
+    for (final item in _catalog.activities) {
+      if (item.name == activity || item.code == activity) return item.pictureLimitPerUc;
+    }
     return picturesPerUc;
   }
 
-  static const zone4Ucs = <String>[];
-
-  static const zone5Ucs = <String>[];
-
-  static final List<String> allUcs = List<String>.of(zone4Ucs)
-    ..addAll(zone5Ucs)
-    ..sort((a, b) => _ucNumber(a).compareTo(_ucNumber(b)));
-
-  static List<String> ucsFor(String? zone) {
-    return switch (zone) {
-      'Zone-4' => zone4Ucs,
-      'Zone-5' => zone5Ucs,
-      _ => const <String>[],
-    };
+  static Future<void> ensureLoaded({String? cnic, bool force = false}) async {
+    if (_loaded && !force) return;
+    if (cnic != null && cnic.isNotEmpty) {
+      try {
+        _catalog = await SupervisorApi().catalog(cnic);
+        _loaded = true;
+        if (_catalog.ucs.isNotEmpty) return;
+      } catch (_) {}
+    }
+    _areas = await loadUcAreas(cnic: cnic);
+    _loaded = true;
   }
 
-  static const tcpNames = <String>[];
+  static List<String> get allUcs {
+    if (_catalog.ucs.isNotEmpty) {
+      return [for (final uc in _catalog.ucs) uc.code];
+    }
+    final seen = <String>{};
+    final list = <String>[];
+    for (final area in _areas) {
+      if (seen.add(area.code)) list.add(area.code);
+    }
+    list.sort((a, b) => _ucNumber(a).compareTo(_ucNumber(b)));
+    return list;
+  }
+
+  static List<String> ucsFor(String? zone) {
+    if (zone == null || zone.isEmpty) return const [];
+    if (_catalog.ucs.isNotEmpty) {
+      return [
+        for (final uc in _catalog.ucs)
+          if (uc.zoneCode == zone) uc.code,
+      ];
+    }
+    final prefix = switch (zone) {
+      'Zone-4' => 'zone 4',
+      'Zone-5' => 'zone 5',
+      _ => zone.toLowerCase(),
+    };
+    final seen = <String>{};
+    final list = <String>[];
+    for (final area in _areas) {
+      if (!area.name.toLowerCase().contains(prefix)) continue;
+      if (seen.add(area.code)) list.add(area.code);
+    }
+    list.sort((a, b) => _ucNumber(a).compareTo(_ucNumber(b)));
+    return list;
+  }
+
+  static List<CatalogSite> sitesFor(String? uc) {
+    if (uc == null || uc.isEmpty) return _catalog.primarySites;
+    return [for (final site in _catalog.primarySites) if (site.ucCode == null || site.ucCode == uc) site];
+  }
+
+  static List<CatalogLocation> locationsFor(String? uc) {
+    if (uc == null || uc.isEmpty) return _catalog.locations;
+    return [for (final place in _catalog.locations) if (place.ucCode == null || place.ucCode == uc) place];
+  }
 
   static int _ucNumber(String label) {
-    final hyphen = label.indexOf('-');
-    final space = label.indexOf(' ');
-    if (hyphen < 0 || space <= hyphen) return 0;
-    return int.tryParse(label.substring(hyphen + 1, space)) ?? 0;
+    final match = RegExp(r'UC-(\d+)').firstMatch(label);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
   }
 }

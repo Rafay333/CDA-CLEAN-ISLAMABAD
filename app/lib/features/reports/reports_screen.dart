@@ -17,6 +17,7 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   List<SupervisorIssue> _issues = const [];
   EvidenceDay? _evidence;
+  FieldRecordDay? _records;
   String? _error;
   bool _loading = true;
 
@@ -40,11 +41,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       final api = SupervisorApi();
       final issues = await api.issues(session.cnic);
-      final evidence = await api.evidence(session.cnic);
+      EvidenceDay? evidence;
+      FieldRecordDay? records;
+      try {
+        evidence = await api.evidence(session.cnic);
+      } on SupervisorException {
+        evidence = null;
+      }
+      try {
+        records = await api.fieldRecords(session.cnic);
+      } on SupervisorException {
+        records = null;
+      }
       if (!mounted) return;
       setState(() {
         _issues = issues;
         _evidence = evidence;
+        _records = records;
         _loading = false;
         _error = null;
       });
@@ -60,7 +73,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final evidence = _evidence;
-    final hasAny = _issues.isNotEmpty || (evidence != null && evidence.items.isNotEmpty);
+    final records = _records;
+    final hasAny = _issues.isNotEmpty ||
+        (evidence != null && evidence.items.isNotEmpty) ||
+        (records != null && records.items.isNotEmpty);
     return AppPage(
       title: 'Reports',
       showBack: false,
@@ -75,8 +91,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const EmptyState(
               icon: Icons.assessment_outlined,
               title: 'No reports yet',
-              message: 'Complaints and evidence saved today will show here.',
+              message: 'Complaints, field records, and evidence saved today will show here.',
             ),
+          if (records != null && records.items.isNotEmpty) ...[
+            Text('Field records · ${records.date}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            for (final item in records.items) ...[
+              ListItem(
+                title: item.kind.isEmpty ? 'Record ${item.id}' : item.kind,
+                subtitle: item.remarks ?? item.date,
+                trailing: StatusBadge(
+                  label: item.status.isEmpty ? 'Saved' : item.status,
+                  color: AppColors.success,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
           if (evidence != null && evidence.items.isNotEmpty) ...[
             Text('Evidence · ${evidence.date}', style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
@@ -98,8 +129,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 title: issue.activity.isEmpty ? 'Complaint ${issue.id}' : issue.activity,
                 subtitle: issue.description.isEmpty ? issue.sector : issue.description,
                 trailing: StatusBadge(
-                  label: issue.resolved ? 'Resolved' : 'Pending',
-                  color: issue.resolved ? AppColors.success : AppColors.info,
+                  label: issue.resolved
+                      ? 'Resolved'
+                      : issue.inProcessing
+                          ? 'In Processing'
+                          : 'Pending',
+                  color: issue.resolved
+                      ? AppColors.success
+                      : issue.inProcessing
+                          ? AppColors.warning
+                          : AppColors.info,
                 ),
                 onTap: () {
                   AppStateScope.read(context).openIssue(issue);

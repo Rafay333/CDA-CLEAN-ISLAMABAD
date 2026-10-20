@@ -25,7 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_refreshing) return;
     setState(() => _refreshing = true);
     try {
-      await _todayKey.currentState?.reload();
+      await Future.wait([
+        _todayKey.currentState?.reload() ?? Future.value(),
+        AppStateScope.read(context).refreshAccount(),
+      ]);
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -33,16 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pendingSync = AppStateScope.of(context).pendingSyncCount;
+    final state = AppStateScope.of(context);
+    final pendingSync = state.pendingSyncCount;
     return Scaffold(
       backgroundColor: _HomePalette.background,
       body: Column(
         children: [
           AppHeader(
             pendingSync: pendingSync,
+            unreadNotices: state.unreadNotices,
             refreshing: _refreshing,
             onSync: () => showSyncSheet(context),
             onRefresh: _refreshPage,
+            onNotifications: () => context.push(AppRoutes.notifications),
             onLogout: () => confirmSignOut(context),
           ),
           Expanded(
@@ -73,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       iconBackground: const Color(0xFFE6F6F1),
                       title: 'HR Management',
                       subtitle: 'Manage workers, attendance and daily logs.',
-                      onTap: () => context.push(AppRoutes.hr),
+                      onTap: () => context.push(AppRoutes.hr1),
                     ),
                     const SizedBox(height: 12),
                     _ModuleCard(
@@ -82,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       tint: const Color(0xFFD9EFFB),
                       iconBackground: const Color(0xFFE7F4FC),
                       title: 'Solid Waste Management',
-                      subtitle: 'Primary sites and transfer stations.',
+                      subtitle: 'Daily PED pictorial evidence.',
                       onTap: () => context.push(AppRoutes.waste),
                     ),
                     const SizedBox(height: 12),

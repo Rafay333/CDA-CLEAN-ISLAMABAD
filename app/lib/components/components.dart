@@ -1,3 +1,4 @@
+export 'app_version_label.dart';
 export 'bottom_navigation.dart';
 export 'bottom_sheet.dart';
 export 'buttons.dart';

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../components/components.dart';
@@ -5,7 +7,9 @@ import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
+import 'employee_details.dart';
 import 'face_capture.dart';
+import 'face_match.dart';
 
 class WorkerRegistrationScreen extends StatefulWidget {
   const WorkerRegistrationScreen({super.key});
@@ -89,20 +93,38 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
     setState(() {
       _selected = selected;
       _shift = _savedShift(selected);
+      _error = null;
     });
+    final session = AppStateScope.read(context).session;
+    if (session == null) return;
+    try {
+      final detail = await _api.employee(session.cnic, _id(selected));
+      if (!mounted) return;
+      setState(() {
+        _selected = {...selected, ...detail};
+        _shift = _savedShift(_selected) ?? _shift;
+      });
+    } on SupervisorException {
+      // List payload is enough when the detail card is unavailable.
+    }
   }
 
-  Future<void> _register() async {
+  Future<void> _register({List<Uint8List>? photos, bool confirmDifferent = false}) async {
     final selected = _selected;
     final shift = _shift;
-    if (selected == null || shift == null || selected['enrolled'] == true || _saving) return;
-    final photos = await FaceCapturePage.open(
-      context,
-      title: 'Registration',
-      burst: false,
-    );
-    if (photos == null || !mounted) return;
-    if (photos.length < 3) {
+    if (selected == null || shift == null || _saving) return;
+    if (selected['enrolled'] == true) {
+      _show(alreadyRegisteredMessage, InlineTone.error);
+      return;
+    }
+    final shots = photos ??
+        await FaceCapturePage.open(
+          context,
+          title: 'Registration',
+          burst: false,
+        );
+    if (shots == null || !mounted) return;
+    if (shots.length < 3) {
       _show('The camera could not take all the pictures. Please try again.', InlineTone.error);
       return;
     }
@@ -114,30 +136,72 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
         cnic: session.cnic,
         employeeId: _id(selected),
         shift: shift,
-        photos: photos,
+        photos: shots,
+        confirmDifferent: confirmDifferent,
       );
       if (!mounted) return;
       final employee = result['employee'] is Map
           ? Map<String, dynamic>.from(result['employee'] as Map)
-          : selected;
+          : {...selected, 'enrolled': true, 'shift': shift};
       setState(() {
         _selected = employee;
         _shift = _savedShift(employee) ?? shift;
         _saving = false;
+        _error = null;
+        _employees = [
+          for (final row in _employees)
+            _id(row) == _id(employee) ? employee : row,
+        ];
       });
-      _show('Face registered for ${employee['name']}.', InlineTone.success);
-      await _load();
+      _show('$faceRegisteredSuccessMessage ${employee['name']}.', InlineTone.success);
     } on SupervisorException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      // Two different 409s come back from enroll (spec §5.2):
-      //  - "This face is already registered under {Name} ({Cnic})": the same person is enrolled
-      //    as someone else. Show the message and do NOT reset the employee picked here.
-      //  - "Face already registered.": this employee already has a face and our roster is stale.
-      //    Reload so the Registered pill and the Reset face button appear for this employee.
-      final duplicate = error.message.toLowerCase().contains('already registered under');
+      if (isDuplicateOfOtherEmployeeError(error.message) && !confirmDifferent) {
+        final other = otherEmployeeFromDuplicateError(error.message) ?? 'another worker';
+        final name = '${selected['name']}';
+        final proceed = await ConfirmationSheet.show(
+          context,
+          title: 'Different person?',
+          message:
+              '$name and $other are treated as the same face. If they are two people, register $name anyway. Do not reset the other worker.',
+          confirmLabel: 'They are different — register',
+        );
+        if (!mounted) return;
+        if (proceed == true) {
+          await _register(photos: shots, confirmDifferent: true);
+          return;
+        }
+        _show(
+          '$name was not registered. Take three new photos in good light, face filling the oval.',
+          InlineTone.error,
+        );
+        return;
+      }
+      if (isDuplicateOfOtherEmployeeError(error.message)) {
+        _show(
+          '${selected['name']} is a different person. Take three new photos in good light, face filling the oval, glasses off on photo 2.',
+          InlineTone.error,
+        );
+        return;
+      }
+      if (isThisEmployeeAlreadyEnrolledError(error.message)) {
+        final reset = await ConfirmationSheet.show(
+          context,
+          title: 'Face already on server',
+          message:
+              'This employee already has a stored face (the list may be outdated). Reset the face and register again.',
+          confirmLabel: 'Reset and try again',
+        );
+        if (!mounted) return;
+        if (reset == true) {
+          await _resetFaceOnly();
+        } else {
+          _show(alreadyRegisteredMessage, InlineTone.error);
+        }
+        return;
+      }
       _show(error.message, InlineTone.error);
-      if (error.retry && !duplicate) await _load();
     }
   }
 
@@ -151,6 +215,12 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
       confirmLabel: 'Reset face',
     );
     if (!confirmed || !mounted) return;
+    await _resetFaceOnly();
+  }
+
+  Future<void> _resetFaceOnly() async {
+    final selected = _selected;
+    if (selected == null || _saving) return;
     setState(() => _saving = true);
     try {
       final session = AppStateScope.read(context).session;
@@ -161,7 +231,9 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
         _selected = person;
         _shift = _savedShift(person);
         _saving = false;
+        _error = null;
       });
+      _show('Face reset. Tap Register face and take three HD photos.', InlineTone.info);
       await _load();
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -190,14 +262,6 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          Text(
-            'Choose an employee and a shift, then take three photos, 5 seconds apart, looking straight at the camera.',
-            style: AppType.body.copyWith(
-              color: const Color(0xFF12304A),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 16),
           if (_loading)
             const LoadingSkeleton(height: 64)
           else
@@ -208,6 +272,10 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
             ),
           const SizedBox(height: 8),
           Text('Employee', style: AppType.caption),
+          if (selected != null) ...[
+            const SizedBox(height: 16),
+            EmployeeDetails(employee: selected),
+          ],
           const SizedBox(height: 16),
           Text(
             'Shift',
@@ -231,16 +299,22 @@ class _WorkerRegistrationScreenState extends State<WorkerRegistrationScreen> {
               ],
             ],
           ),
+          if (enrolled && selected != null) ...[
+            const SizedBox(height: 16),
+            InlineMessage(
+              tone: InlineTone.success,
+              message: 'Face registered for ${selected['name']}. Use Reset face to register again.',
+            ),
+          ] else if (_error != null) ...[
+            const SizedBox(height: 16),
+            InlineMessage(tone: InlineTone.error, message: _error!),
+          ],
           if (enrolled && _shift == null) ...[
             const SizedBox(height: 8),
             const InlineMessage(
               tone: InlineTone.warning,
               message: 'No shift is saved. Reset the face, choose Day, Evening, or Night, and register again.',
             ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            InlineMessage(tone: InlineTone.error, message: _error!),
           ],
           if (_employees.isEmpty && !_loading && _error == null) ...[
             const SizedBox(height: 16),

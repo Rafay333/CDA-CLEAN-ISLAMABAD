@@ -550,11 +550,26 @@ Multipart.
 |-------|----------|
 | `supervisor_cnic` | Yes |
 | `shift` | Yes. `Day`, `Evening`, or `Night` |
-| `image0`, `image1`, `image2` | Yes. Exactly 3. The app takes them 5 seconds apart. |
+| `image0`, `image1`, `image2` | Yes. Exactly 3, 1080p. Photo 1 straight on, photo 2 **without glasses**, photo 3 usual beard/mustache. Keep all three encodings; do not average them. |
+| `confirm_different` | No. `true` / `false`. Default `false`. App sends `true` when the supervisor confirms the new worker is **not** the person named in a prior 409. Then **save** the face on this employee id. |
 
-`409` when a face is already enrolled for **this** employee. Body: `{ "success": false, "message": "Face already registered." }`. The app treats HTTP 409 as “ask the user to reset and try again.”  
-`409` when the face belongs to **another** employee. This check is mandatory: before saving, compare the three new encodings against every stored encoding of every other employee (any contractor). If the smallest distance is `<= 0.55`, do **not** save and answer `{ "success": false, "message": "This face is already registered under Ahmed Raza (3520223456782). One person cannot be registered twice." }`. The same person must never hold two employee records; the only way to move a face is `reset-face` on the old record first.  
-`422` when the shift is missing, a photo is missing, the face cannot be detected, or the three photos are not the same person (pairwise distance `> 0.45`). `message` is shown on the phone.  
+`409` when a face is already enrolled for **this** employee. Body: `{ "success": false, "message": "Face already registered." }`. The app treats HTTP 409 as “ask the user to reset and try again.”
+
+`409` when the face belongs to **another** employee — **only** after the strict duplicate rule below. Live bug (2026-10-15): registering **Jawad Mehmood** was rejected as **Abdul Rafay (3730390556047)**. They are two people. A median / min-of-9 / cut of `0.40`–`0.55` is too loose (beard/mustache look-alikes).
+
+**Duplicate rule (enrol only — do not reuse the attendance median):**
+
+1. For each already-enrolled employee except `{id}`, and for each of the 3 new photos, take the smallest distance from that photo to that employee’s stored encodings.
+2. That employee’s duplicate distance is the **maximum** of those 3 per-photo values (all three photos must look like that person). Do **not** use the single smallest of the 3×3 matrix. Do **not** use the median (2 of 3).
+3. Block only when that distance is `<= 0.32`. Same person twice is well under this. A colleague with a similar beard is not.
+4. If blocked and `confirm_different` is missing/`false`: do **not** save. Return `{ "success": false, "message": "This face is already registered under Abdul Rafay (3730390556047). One person cannot be registered twice." }` (real name + CNIC).
+5. If blocked and `confirm_different=true`: **skip the duplicate block and save** on `{id}`. Do **not** reset the other employee. The supervisor has attested they are two people.
+6. Glasses, a mustache, or a beard on the same person are not a different person. The only way to **move** a face from one employee to another is `reset-face` on the old record first.
+
+`422` when the shift is missing, a photo is missing, the face cannot be detected, the detected face is narrower than **120 px** (`"Photo 2: the face is too small. Hold the phone closer so the face fills the oval."`), or the three photos are not the same person (pairwise distance `> 0.60` — wide enough for glasses off, a mustache, or a beard). `message` is shown on the phone.
+
+Encode registration photos with dlib `num_jitters = 5` (or equivalent). Keep encode + store fast: the phone now sends 1080p JPEGs, not 4K.
+
 Success `200`:
 
 ```json
@@ -583,9 +598,15 @@ Multipart. This is check-in / check-out, not the roster save.
 | `acc` | Yes | Metres. The app blocks accuracy worse than 300 m before calling. Still reject `acc` &gt; 300 with 422. |
 | `mock` | Yes | `true` / `false`. `true` → **422** `"Fake GPS detected."` |
 | `deviceId` | Yes | Stable id from the phone |
-| `confirm` | No | `true` / `false`. Default legacy behaviour is mark immediately. When `false` and the person still needs check-in or check-out, **do not write attendance** — return a preview so the phone can show face + name and ask Yes / No. When `true`, write the row. |
+| `confirm` | Yes | `true` / `false`. The app **always** sends it: first `false`, then `true` after the supervisor taps Yes. When `false` and the person still needs check-in or check-out, **do not write attendance** — return a preview so the phone can show face + name and ask Yes / No. When `true`, write the row. A server that ignores `confirm=false` marks attendance the moment the camera closes, with no chance to refuse a wrong match; the phone now shows a warning when that happens. |
 
-Match the face to an enrolled employee of this contractor.
+Match the face to an enrolled employee of this contractor using this rule (the reference is `server/src/face-rules.ts`):
+
+1. For each enrolled employee and each of the 3 probe photos, take the smallest distance between that probe and any of the employee’s stored encodings.
+2. The employee’s distance is the **median** of those 3 per-probe values, i.e. at least 2 of the 3 photos must agree. Do **not** take the single smallest of the 3×3 distances — one lucky frame then matches a stranger.
+3. Recognised when the best employee’s distance is `<= 0.40` **and** the runner-up is at least `0.12` further away. The phone rejects previews below **60%** match. Enrol with **10 jitters** per photo; attendance burst with **5 jitters**. Otherwise `422` `"Not sure who this is. Try again in good light, looking straight at the camera."` Glasses, a mustache, or a beard must still match the same worker, and must not be enough on their own to pick a different worker.
+4. `422` `"Photo N: the face is too small. Hold the phone closer so the face fills the oval."` when any detected face is narrower than **120 px**. Small faces are the main reason a different worker gets matched.
+5. Store `matchPercent = round((1 - distance) * 100)`.
 
 Preview success `200` when `confirm=false` and action is `checkin` or `checkout`:
 
@@ -645,7 +666,7 @@ Marked success `200` when `confirm=true` (or legacy servers that always mark):
 - Open check-in and no check-out → `checkout`. Store check-out **only when `confirm=true`**.
 - Both already stored today → `complete`. Do not insert a third row. `message` explains that the worker is already in and out.
 
-`422` when the face matches nobody, GPS is mocked, accuracy is over 300 m, or fewer than 3 images are sent.  
+`422` when the face matches nobody, the match is not clear (rule 3 above), the face is too small (rule 4), GPS is mocked, accuracy is over 300 m, or fewer than 3 images are sent.  
 Also set the roster row (`GET /api/supervisor/attendance`) for that employee: `present: true`, `check_in`, `check_out`, `geo_tag`, `source: "Face"`, `verified_by_app: true`. Then `GET /api/supervisor/hr-summary` counts the same person. One attendance fact, two reads.
 
 #### `GET /api/supervisor/attendance/log?supervisor_cnic={cnic}&date={yyyy-MM-dd}&q={text}`

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../components/app_version_label.dart';
 import '../../constants/app_assets.dart';
 import '../../constants/app_routes.dart';
 import '../../core/supervisor_api.dart';
@@ -371,6 +372,8 @@ class _LoginSheet extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              const AppVersionLabel(),
             ],
           ),
         ),

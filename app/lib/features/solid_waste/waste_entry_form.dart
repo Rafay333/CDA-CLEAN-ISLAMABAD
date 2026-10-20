@@ -55,6 +55,10 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
     _vehicleNumber = TextEditingController(text: waste.vehicleNumber);
     _area = widget.ruralOnly ? 'Rural' : waste.area;
     if (widget.modes.isNotEmpty) _mode = widget.modes.first;
+    final cnic = AppStateScope.read(context).session?.cnic;
+    WasteCatalog.ensureLoaded(cnic: cnic).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -264,30 +268,61 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
                 items: WasteCatalog.allUcs,
                 value: waste.uc,
                 onChanged: (value) {
-                  AppStateScope.read(context)
-                      .updateWaste((draft) => draft.uc = value);
+                  AppStateScope.read(context).updateWaste((draft) {
+                    draft.uc = value;
+                    draft.primarySite = null;
+                    draft.primarySiteId = null;
+                    draft.location = null;
+                    draft.locationId = null;
+                  });
                 },
               ),
             if (widget.showUc) const SizedBox(height: 14),
             if (widget.showPrimarySite)
-              const DropdownField(
+              DropdownField(
                 label: 'Primary Site',
                 hint: 'Select primary site',
-                items: [],
+                items: [for (final site in WasteCatalog.sitesFor(waste.uc)) site.name],
+                value: waste.primarySite,
+                onChanged: (value) {
+                  CatalogSite? selected;
+                  for (final site in WasteCatalog.sitesFor(waste.uc)) {
+                    if (site.name == value) selected = site;
+                  }
+                  AppStateScope.read(context).updateWaste((draft) {
+                    draft.primarySite = value;
+                    draft.primarySiteId = selected?.id;
+                  });
+                },
               ),
             if (widget.showPrimarySite) const SizedBox(height: 14),
-            const DropdownField(
+            DropdownField(
               label: 'Location',
               hint: 'Select location',
-              items: [],
+              items: [for (final place in WasteCatalog.locationsFor(waste.uc)) place.name],
+              value: waste.location,
+              onChanged: (value) {
+                CatalogLocation? selected;
+                for (final place in WasteCatalog.locationsFor(waste.uc)) {
+                  if (place.name == value) selected = place;
+                }
+                AppStateScope.read(context).updateWaste((draft) {
+                  draft.location = value;
+                  draft.locationId = selected?.id;
+                });
+              },
             ),
             const SizedBox(height: 18),
             const SectionHeader(title: 'Vehicle'),
             const SizedBox(height: 12),
-            const DropdownField(
+            DropdownField(
               label: 'Vehicle Type',
               hint: 'Select vehicle type',
-              items: [],
+              items: WasteCatalog.vehicleTypes,
+              value: waste.vehicleType,
+              onChanged: (value) {
+                AppStateScope.read(context).updateWaste((draft) => draft.vehicleType = value);
+              },
             ),
             const SizedBox(height: 14),
             TextInput(

@@ -3,13 +3,26 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
+import 'waste_catalog.dart';
 
-class SolidWasteHomeScreen extends StatelessWidget {
+class SolidWasteHomeScreen extends StatefulWidget {
   const SolidWasteHomeScreen({super.key});
 
-  void _openTab(BuildContext context, int index) {
+  @override
+  State<SolidWasteHomeScreen> createState() => _SolidWasteHomeScreenState();
+}
+
+class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WasteCatalog.ensureLoaded(cnic: AppStateScope.read(context).session?.cnic);
+  }
+
+  void _openTab(int index) {
     switch (index) {
       case 1:
         context.go(AppRoutes.reports);
@@ -57,7 +70,7 @@ class SolidWasteHomeScreen extends StatelessWidget {
                   badge: const Color(0xFFE4F8FA),
                   wash: const Color(0xFFD2F4F7),
                   title: 'Activity',
-                  subtitle: 'Collection, sweeping and mechanical work.',
+                  subtitle: 'Activity, zone, UC and pictures in one card.',
                   onTap: () => context.push(AppRoutes.wasteActivity),
                 ),
                 const SizedBox(height: 14),
@@ -87,7 +100,7 @@ class SolidWasteHomeScreen extends StatelessWidget {
       ),
       bottomNavigationBar: AppBottomNavigation(
         currentIndex: 0,
-        onTap: (index) => _openTab(context, index),
+        onTap: (index) => _openTab(index),
       ),
     );
   }

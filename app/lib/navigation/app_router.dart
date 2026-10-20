@@ -18,11 +18,17 @@ import '../features/hr/attendance_log_screen.dart';
 import '../features/hr/attendance_screen.dart';
 import '../features/hr/hr_home_screen.dart';
 import '../features/hr/worker_registration_screen.dart';
+import '../features/hr1/gps_attendance_log_screen_manual.dart';
+import '../features/hr1/gps_attendance_screen_manual.dart';
+import '../features/hr1/hr1_home_screen_manual.dart';
+import '../features/hr1/photo_registration_screen_manual.dart';
 import '../features/profile/profile_details_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/solid_waste/activity_screen.dart';
 import '../features/solid_waste/bulk_waste_screen.dart';
+import '../features/solid_waste/evidence_history_screen.dart';
+import '../features/solid_waste/evidence_upload_screen.dart';
 import '../features/solid_waste/primary_site_form_screen.dart';
 import '../features/solid_waste/primary_site_record_screen.dart';
 import '../features/solid_waste/record_details_screen.dart';
@@ -101,8 +107,38 @@ GoRouter createAppRouter() {
         builder: (context, state) => const AttendanceLogScreen(),
       ),
       GoRoute(
+        path: AppRoutes.hr1,
+        builder: (context, state) => const Hr1HomeScreenManual(),
+      ),
+      GoRoute(
+        path: AppRoutes.hr1Register,
+        builder: (context, state) => const PhotoRegistrationScreenManual(),
+      ),
+      GoRoute(
+        path: AppRoutes.hr1Attendance,
+        builder: (context, state) => const GpsAttendanceScreenManual(),
+      ),
+      GoRoute(
+        path: AppRoutes.hr1AttendanceLog,
+        builder: (context, state) => const GpsAttendanceLogScreenManual(),
+      ),
+      GoRoute(
         path: AppRoutes.waste,
         builder: (context, state) => const SolidWasteHomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.wasteEvidenceUpload,
+        builder: (context, state) {
+          final extra = state.extra;
+          return EvidenceUploadScreen(args: extra is EvidenceUploadArgs ? extra : null);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.wasteEvidenceHistory,
+        builder: (context, state) {
+          final extra = state.extra;
+          return EvidenceHistoryScreen(date: extra is String ? extra : null);
+        },
       ),
       GoRoute(
         path: AppRoutes.primarySite,

@@ -32,13 +32,13 @@ class ComplaintsHomeScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
                 _ComplaintCard(
-                  icon: Icons.list_alt_rounded,
+                  icon: Icons.map_rounded,
                   accent: const Color(0xFF3B82F6),
                   badge: const Color(0xFFE8F1FF),
                   wash: const Color(0xFFD9E8FF),
                   title: 'View Complaints',
-                  subtitle: 'All complaints with current status',
-                  onTap: () => context.push(AppRoutes.complaintList),
+                  subtitle: 'Map of all union councils and complaints',
+                  onTap: () => context.push(AppRoutes.complaintMap),
                 ),
                 const SizedBox(height: 14),
                 _ComplaintCard(
@@ -49,6 +49,16 @@ class ComplaintsHomeScreen extends StatelessWidget {
                   title: 'Open complaints',
                   subtitle: 'Pending and in-processing complaints',
                   onTap: () => context.push(AppRoutes.openComplaints),
+                ),
+                const SizedBox(height: 14),
+                _ComplaintCard(
+                  icon: Icons.add_comment_outlined,
+                  accent: const Color(0xFFD97706),
+                  badge: const Color(0xFFFFF4E5),
+                  wash: const Color(0xFFFFE8C7),
+                  title: 'Submit complaint',
+                  subtitle: 'Create a SupervisorApp complaint',
+                  onTap: () => context.push(AppRoutes.submitComplaint),
                 ),
               ],
             ),

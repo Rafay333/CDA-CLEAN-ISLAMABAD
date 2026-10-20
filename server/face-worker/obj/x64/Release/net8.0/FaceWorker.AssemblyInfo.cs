@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FaceWorker")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2e1bdf23d480f13d8edf67ac414fcf83f1391e44")]
 [assembly: System.Reflection.AssemblyProductAttribute("FaceWorker")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FaceWorker")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

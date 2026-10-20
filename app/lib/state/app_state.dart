@@ -47,25 +47,38 @@ class ProfileDetails {
     this.name = '',
     this.fatherName = '',
     this.cnic = '',
-    this.address = '',
     this.mobile = '',
     this.dob,
+    this.contractorName = '',
+    this.accountType = '',
   });
 
   final String name;
   final String fatherName;
   final String cnic;
-  final String address;
   final String mobile;
   final DateTime? dob;
+  final String contractorName;
+  final String accountType;
 
   bool get hasAny =>
       name.trim().isNotEmpty ||
       fatherName.trim().isNotEmpty ||
       cnic.trim().isNotEmpty ||
-      address.trim().isNotEmpty ||
       mobile.trim().isNotEmpty ||
       dob != null;
+
+  factory ProfileDetails.fromSupervisor(SupervisorProfile row) {
+    return ProfileDetails(
+      name: row.fullName,
+      fatherName: row.fatherName,
+      cnic: row.cnic,
+      mobile: row.mobile,
+      dob: parseSupervisorDate(row.dob) ?? DateTime.tryParse(row.dob ?? ''),
+      contractorName: row.contractorName,
+      accountType: row.accountType,
+    );
+  }
 }
 
 class TimelineEntry {
@@ -117,7 +130,9 @@ class WasteDraft {
   String area = 'Urban';
   String? uc;
   String? primarySite;
+  int? primarySiteId;
   String? location;
+  int? locationId;
   String? vehicleType;
   String vehicleNumber = '';
   String? latitude;
@@ -130,6 +145,7 @@ class WasteDraft {
   String? containerType;
   String? tcpName;
   bool zeroWaste = false;
+  int? recordId;
   final List<LocalPhoto> beforePhotos = [];
   final List<LocalPhoto> afterPhotos = [];
   final List<UcPhotoGroup> ucGroups = [];
@@ -139,7 +155,9 @@ class WasteDraft {
     area = 'Urban';
     uc = null;
     primarySite = null;
+    primarySiteId = null;
     location = null;
+    locationId = null;
     vehicleType = null;
     vehicleNumber = '';
     latitude = null;
@@ -152,6 +170,7 @@ class WasteDraft {
     containerType = null;
     tcpName = null;
     zeroWaste = false;
+    recordId = null;
     beforePhotos.clear();
     afterPhotos.clear();
     ucGroups.clear();
@@ -188,6 +207,7 @@ class AppState extends ChangeNotifier {
   DateTime? complaintSyncedAt;
   int pendingResolveCount = 0;
   List<PendingResolve> pendingResolves = const [];
+  int unreadNotices = 0;
 
   Future<void> get ready => _ready;
 
@@ -236,6 +256,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshAccount() async {
+    final user = session;
+    if (user == null) return;
+    try {
+      final notices = await SupervisorApi().notifications(user.cnic);
+      unreadNotices = notices.where((item) => !item.read).length;
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> restore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -257,6 +287,7 @@ class AppState extends ChangeNotifier {
       pendingResolveCount = 0;
     }
     notifyListeners();
+    await refreshAccount();
   }
 
   Future<void> signIn(SupervisorUser user, {required bool remember}) async {
@@ -270,6 +301,7 @@ class AppState extends ChangeNotifier {
       await prefs.remove(_sessionKey);
     }
     notifyListeners();
+    await refreshAccount();
   }
 
   void openIssue(SupervisorIssue issue, {bool processing = false}) {
@@ -283,23 +315,35 @@ class AppState extends ChangeNotifier {
     complaint.slaLabel = issue.slaLabel;
     complaint.status = issue.resolved
         ? ComplaintStatus.resolved
-        : processing
+        : (processing || issue.inProcessing)
             ? ComplaintStatus.inProcessing
             : ComplaintStatus.fresh;
     complaint.submittedAt = DateTime.tryParse(issue.dateLogged);
     complaint.remoteBefore.addAll(issue.beforePictures);
     complaint.remoteAfter.addAll(issue.afterPictures);
-    complaint.timeline.add(
-      TimelineEntry(
-        title: issue.resolved
-            ? 'Marked as Completed'
-            : processing
-                ? 'Marked as In Processing'
-                : 'Marked as New',
-        at: complaint.submittedAt ?? DateTime.now(),
-        color: complaintStatusColor(complaint.status),
-      ),
-    );
+    if (issue.timeline.isNotEmpty) {
+      for (final event in issue.timeline) {
+        complaint.timeline.add(
+          TimelineEntry(
+            title: event.title,
+            at: DateTime.tryParse(event.at ?? '') ?? complaint.submittedAt ?? DateTime.now(),
+            color: complaintStatusColor(complaint.status),
+          ),
+        );
+      }
+    } else {
+      complaint.timeline.add(
+        TimelineEntry(
+          title: issue.resolved
+              ? 'Marked as Completed'
+              : (processing || issue.inProcessing)
+                  ? 'Marked as In Processing'
+                  : 'Marked as New',
+          at: complaint.submittedAt ?? DateTime.now(),
+          color: complaintStatusColor(complaint.status),
+        ),
+      );
+    }
     notifyListeners();
   }
 
@@ -339,6 +383,7 @@ class AppState extends ChangeNotifier {
     complaintSyncedAt = null;
     pendingResolves = const [];
     pendingResolveCount = 0;
+    unreadNotices = 0;
     await PendingResolveStore.clearAll();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);

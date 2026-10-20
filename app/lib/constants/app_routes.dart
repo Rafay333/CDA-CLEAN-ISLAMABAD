@@ -13,7 +13,13 @@ class AppRoutes {
   static const workerRegistration = '/hr/workers/register';
   static const attendance = '/hr/attendance';
   static const attendanceLog = '/hr/attendance/log';
+  static const hr1 = '/hr1';
+  static const hr1Register = '/hr1/register';
+  static const hr1Attendance = '/hr1/attendance';
+  static const hr1AttendanceLog = '/hr1/attendance/log';
   static const waste = '/waste';
+  static const wasteEvidenceUpload = '/waste/evidence/upload';
+  static const wasteEvidenceHistory = '/waste/evidence/history';
   static const primarySite = '/waste/primary';
   static const primaryRecord = '/waste/primary/record';
   static const transferStation = '/waste/transfer';

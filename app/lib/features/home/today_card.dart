@@ -17,6 +17,8 @@ class TodayCardState extends State<TodayCard> {
   HrSummary? _summary;
   int? _openIssues;
   int? _evidence;
+  int? _required;
+  int? _uploadedRequired;
   String? _error;
   bool _loading = true;
 
@@ -28,6 +30,15 @@ class TodayCardState extends State<TodayCard> {
     });
   }
 
+  Future<T?> _try<T>(Future<T> Function() call, List<String> errors) async {
+    try {
+      return await call();
+    } on SupervisorException catch (error) {
+      errors.add(error.message);
+      return null;
+    }
+  }
+
   Future<void> _load() async {
     final session = AppStateScope.read(context).session;
     if (session == null) {
@@ -37,28 +48,28 @@ class TodayCardState extends State<TodayCard> {
       });
       return;
     }
+    final api = SupervisorApi();
+    final errors = <String>[];
+    final summary = await _try(() => api.hrSummary(session.cnic), errors);
+    final issues = await _try(() => api.openIssues(session.cnic), errors);
+    EvidenceStatus? status;
+    EvidenceDay? day;
     try {
-      final api = SupervisorApi();
-      final results = await Future.wait([
-        api.hrSummary(session.cnic),
-        api.openIssues(session.cnic),
-        api.evidence(session.cnic),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _summary = results[0] as HrSummary;
-        _openIssues = (results[1] as List).length;
-        _evidence = (results[2] as EvidenceDay).count;
-        _loading = false;
-        _error = null;
-      });
-    } on SupervisorException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = error.message;
-      });
+      status = await api.evidenceStatus(session.cnic);
+    } on SupervisorException {
+      day = await _try(() => api.evidence(session.cnic), errors);
     }
+    if (!mounted) return;
+    final hasAny = summary != null || issues != null || status != null || day != null;
+    setState(() {
+      _summary = summary;
+      _openIssues = issues?.length;
+      _evidence = status?.totalPhotos ?? day?.count;
+      _required = status?.requiredCount;
+      _uploadedRequired = status?.uploadedRequired;
+      _loading = false;
+      _error = hasAny ? null : (errors.isEmpty ? 'Could not load today.' : errors.first);
+    });
   }
 
   @override
@@ -79,9 +90,19 @@ class TodayCardState extends State<TodayCard> {
             ? Text(_error!, style: AppType.caption.copyWith(color: AppColors.error))
             : Row(
                 children: [
-                  _Stat(label: 'Present', value: '${_summary?.presentToday ?? 0}/${_summary?.activeEmployees ?? 0}'),
-                  _Stat(label: 'Open complaints', value: '${_openIssues ?? 0}'),
-                  _Stat(label: 'Evidence', value: '${_evidence ?? 0}'),
+                  _Stat(
+                    label: 'Present',
+                    value: _summary == null
+                        ? '—'
+                        : '${_summary!.presentToday}/${_summary!.activeEmployees}',
+                  ),
+                  _Stat(label: 'Open complaints', value: _openIssues == null ? '—' : '${_openIssues!}'),
+                  _Stat(
+                    label: 'PED photos',
+                    value: _required == null
+                        ? (_evidence == null ? '—' : '${_evidence!}')
+                        : '${_uploadedRequired ?? 0}/${_required ?? 0}',
+                  ),
                 ],
               ),
       ),

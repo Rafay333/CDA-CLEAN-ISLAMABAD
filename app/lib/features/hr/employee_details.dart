@@ -145,8 +145,7 @@ class EmployeePhoto extends StatelessWidget {
     );
     final cnic = AppStateScope.of(context).session?.cnic ?? '';
     final api = SupervisorApi();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.md),
+    return ClipOval(
       child: enrolled && cnic.isNotEmpty
           ? Image.network(
               api.facePhotoUrl(employeeId, cnic, registeredAt),

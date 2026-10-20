@@ -31,8 +31,8 @@ class _BulkWasteScreenState extends State<BulkWasteScreen> {
       _snack('Add a photo from the camera or gallery.');
       return;
     }
-    if (uploads.length > 10) {
-      _snack('The server accepts 10 photos at a time.');
+    if (uploads.length > 30) {
+      _snack('The server accepts up to 30 bulk photos.');
       return;
     }
     final session = AppStateScope.read(context).session;
@@ -43,23 +43,25 @@ class _BulkWasteScreenState extends State<BulkWasteScreen> {
     setState(() => _saving = true);
     try {
       final geo = await currentGeoTag();
-      final saved = await SupervisorApi().uploadEvidence(
+      final saved = await SupervisorApi().saveFieldRecord(
         cnic: session.cnic,
-        activityCode: 'bulk',
-        photos: uploads,
-        geoTag: geo,
+        kind: 'bulk',
+        latitude: geo?.split(',').first,
+        longitude: geo != null && geo.contains(',') ? geo.split(',')[1] : null,
+        bulk: uploads,
       );
       if (!mounted) return;
       AppStateScope.read(context).updateWaste((draft) {
         draft.reset();
         draft.kind = WasteKind.bulk;
         draft.area = 'Rural';
+        draft.recordId = saved.id;
         draft.beforePhotos.addAll(_photos);
         draft.savedAt = DateTime.now();
       });
       AppStateScope.read(context).noteWasteSynced();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved.message ?? 'Record saved.')));
       context.push(AppRoutes.recordDetails);
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -100,8 +102,8 @@ class _BulkWasteScreenState extends State<BulkWasteScreen> {
           PhotoUploader(
             title: 'Pictorial Evidence',
             hint: 'Upload picture',
-            caption: 'Up to 10 photos. They are saved as bulk waste evidence.',
-            maxPhotos: 10,
+            caption: 'Up to 30 photos. They are saved as a bulk field record.',
+            maxPhotos: 30,
             photos: _photos,
             onAdd: (photo) => setState(() => _photos.add(photo)),
             onRemove: (id) {

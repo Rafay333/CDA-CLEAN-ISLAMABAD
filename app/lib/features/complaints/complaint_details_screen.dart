@@ -8,10 +8,39 @@ import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../utils/display_format.dart';
 
-class ComplaintDetailsScreen extends StatelessWidget {
+class ComplaintDetailsScreen extends StatefulWidget {
   const ComplaintDetailsScreen({super.key});
 
-  void _takeAction(BuildContext context, ComplaintDraft complaint) {
+  @override
+  State<ComplaintDetailsScreen> createState() => _ComplaintDetailsScreenState();
+}
+
+class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
+  bool _acting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh();
+    });
+  }
+
+  Future<void> _refresh() async {
+    final state = AppStateScope.read(context);
+    final id = state.complaint.issueId;
+    final cnic = state.session?.cnic;
+    if (id == null || cnic == null) return;
+    try {
+      final issue = await SupervisorApi().issue(cnic, id);
+      if (!mounted) return;
+      state.openIssue(issue, processing: issue.inProcessing);
+    } on SupervisorException {
+      // Keep the list payload if detail is unavailable.
+    }
+  }
+
+  Future<void> _takeAction(ComplaintDraft complaint) async {
     if (complaint.issueId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Open a complaint from the list first.')),
@@ -19,22 +48,57 @@ class ComplaintDetailsScreen extends StatelessWidget {
       return;
     }
     if (complaint.status == ComplaintStatus.resolved) return;
-    context.push(AppRoutes.afterPhotos);
+    if (complaint.status == ComplaintStatus.inProcessing) {
+      context.push(AppRoutes.afterPhotos);
+      return;
+    }
+    final session = AppStateScope.read(context).session;
+    if (session == null) return;
+    setState(() => _acting = true);
+    try {
+      final message = await SupervisorApi().setIssueStatus(
+        cnic: session.cnic,
+        id: complaint.issueId!,
+        portalStatus: 'in_processing',
+      );
+      if (!mounted) return;
+      AppStateScope.read(context).updateComplaint((draft) {
+        draft.status = ComplaintStatus.inProcessing;
+        draft.timeline.add(
+          TimelineEntry(
+            title: 'Marked as In Processing',
+            at: DateTime.now(),
+            color: complaintStatusColor(ComplaintStatus.inProcessing),
+          ),
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final complaint = AppStateScope.of(context).complaint;
-    final actionLabel = complaint.status == ComplaintStatus.resolved
-        ? 'Completed'
-        : 'Add after photos';
+    final actionLabel = switch (complaint.status) {
+      ComplaintStatus.resolved => 'Completed',
+      ComplaintStatus.inProcessing => 'Add after photos',
+      _ => 'Take action',
+    };
     return AppPage(
       title: 'Complaint Details',
       bottom: PrimaryButton(
         label: actionLabel,
-        onPressed: complaint.issueId == null || complaint.status == ComplaintStatus.resolved
+        loading: _acting,
+        onPressed: complaint.issueId == null ||
+                complaint.status == ComplaintStatus.resolved ||
+                _acting
             ? null
-            : () => _takeAction(context, complaint),
+            : () => _takeAction(complaint),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -42,7 +106,7 @@ class ComplaintDetailsScreen extends StatelessWidget {
           if (complaint.issueId == null)
             const InlineMessage(
               tone: InlineTone.warning,
-              message: 'Open a complaint from the list. New complaints are created by the citizen app.',
+              message: 'Open a complaint from the list, or submit a new one.',
             ),
           if (!complaint.submitted) const SizedBox(height: 12),
           Row(

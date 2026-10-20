@@ -103,7 +103,7 @@
           }
         }
       },
-      "System.Drawing.Common/8.0.31": {
+      "System.Drawing.Common/8.0.32": {
         "type": "package",
         "dependencies": {
           "Microsoft.Win32.SystemEvents": "8.0.0"
@@ -213,10 +213,10 @@
         "useSharedDesignerContext.txt"
       ]
     },
-    "System.Drawing.Common/8.0.31": {
-      "sha512": "xCTGg7fw7JE8j3feXaedW8/n7FGfPV5OyAllr+6Hed1w5Q40EFDrT1fL9Xyuj/eQcikYpvVU7Z8RJO0HVjQfzQ==",
+    "System.Drawing.Common/8.0.32": {
+      "sha512": "s/wiJKjxb7WSB43WwQxBJABYKf5LToXSVdhUp2KcuiHlh5honWrvRqe5z83bIFHliztBfk2yU/Q5959zxH9ZDw==",
       "type": "package",
-      "path": "system.drawing.common/8.0.31",
+      "path": "system.drawing.common/8.0.32",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -248,7 +248,7 @@
         "lib/xamarinmac20/_._",
         "lib/xamarintvos10/_._",
         "lib/xamarinwatchos10/_._",
-        "system.drawing.common.8.0.31.nupkg.sha512",
+        "system.drawing.common.8.0.32.nupkg.sha512",
         "system.drawing.common.nuspec",
         "useSharedDesignerContext.txt"
       ]
@@ -262,7 +262,7 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget": {},
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
@@ -271,7 +271,7 @@
       "projectUniqueName": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\FaceWorker.csproj",
       "projectName": "FaceWorker",
       "projectPath": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\FaceWorker.csproj",
-      "packagesPath": "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget",
+      "packagesPath": "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget",
       "outputPath": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [

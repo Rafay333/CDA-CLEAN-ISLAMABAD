@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../constants/app_assets.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
+import 'app_version_label.dart';
 
 const _homeHeaderGradient = LinearGradient(
   colors: [Color(0xFF00695C), Color(0xFF0A4A62), Color(0xFF12304A)],
@@ -18,14 +19,18 @@ class AppHeader extends StatelessWidget {
     this.onRefresh,
     this.onSync,
     this.onLogout,
+    this.onNotifications,
     this.pendingSync = 0,
+    this.unreadNotices = 0,
     this.refreshing = false,
   });
 
   final VoidCallback? onRefresh;
   final VoidCallback? onSync;
   final VoidCallback? onLogout;
+  final VoidCallback? onNotifications;
   final int pendingSync;
+  final int unreadNotices;
   final bool refreshing;
 
   @override
@@ -37,7 +42,7 @@ class AppHeader extends StatelessWidget {
         child: SafeArea(
           bottom: false,
           child: SizedBox(
-            height: 72,
+            height: 86,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -63,11 +68,27 @@ class AppHeader extends StatelessWidget {
                     busy: refreshing,
                   ),
                   const SizedBox(width: 8),
-                  IconActionButton(
-                    icon: Icons.logout_rounded,
-                    tooltip: 'Log out',
-                    onPressed: onLogout,
-                    light: true,
+                  if (onNotifications != null) ...[
+                    IconActionButton(
+                      icon: Icons.notifications_none_rounded,
+                      tooltip: 'Notifications',
+                      onPressed: onNotifications,
+                      light: true,
+                      badgeCount: unreadNotices,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconActionButton(
+                        icon: Icons.logout_rounded,
+                        tooltip: 'Log out',
+                        onPressed: onLogout,
+                        light: true,
+                      ),
+                      const AppVersionLabel(onDark: true),
+                    ],
                   ),
                 ],
               ),

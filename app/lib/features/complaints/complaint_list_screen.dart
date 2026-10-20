@@ -60,9 +60,10 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_processingKey) ?? const <String>[];
+      final query = _search.text.trim();
       final rows = widget.openOnly
-          ? await SupervisorApi().openIssues(session.cnic)
-          : await SupervisorApi().issues(session.cnic);
+          ? await SupervisorApi().openIssues(session.cnic, query: query)
+          : await SupervisorApi().issues(session.cnic, status: _apiStatus, query: query);
       if (!mounted) return;
       final processing = <int>{
         for (final id in saved)
@@ -102,8 +103,20 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
     ];
   }
 
+  String get _apiStatus {
+    return switch (_status) {
+      'Pending' => 'pending',
+      'In Processing' => 'in_processing',
+      'Resolved' => 'resolved',
+      'Open' => 'pending',
+      _ => 'all',
+    };
+  }
+
+  bool _working(SupervisorIssue issue) => issue.inProcessing || _processing.contains(issue.id);
+
   bool _matchesStatus(SupervisorIssue issue) {
-    final processing = _processing.contains(issue.id);
+    final processing = _working(issue);
     return switch (_status) {
       'Pending' => !issue.resolved && !processing,
       'In Processing' => !issue.resolved && processing,
@@ -123,19 +136,19 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
 
   String _badgeLabel(SupervisorIssue issue) {
     if (issue.resolved) return 'Completed';
-    if (_processing.contains(issue.id)) return 'In Processing';
+    if (_working(issue)) return 'In Processing';
     return 'Pending';
   }
 
   Color _badgeColor(SupervisorIssue issue) {
     if (issue.resolved) return AppColors.success;
-    if (_processing.contains(issue.id)) return AppColors.warning;
+    if (_working(issue)) return AppColors.warning;
     return AppColors.info;
   }
 
   Future<void> _onAction(SupervisorIssue issue) async {
     if (issue.resolved) return;
-    if (_processing.contains(issue.id)) {
+    if (_working(issue)) {
       AppStateScope.read(context).openIssue(issue, processing: true);
       await context.push(AppRoutes.afterPhotos);
       if (mounted) await _loadIssues();
@@ -153,13 +166,26 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _rememberProcessing(issue.id);
+    final session = AppStateScope.read(context).session;
+    if (session == null) return;
+    try {
+      await SupervisorApi().setIssueStatus(
+        cnic: session.cnic,
+        id: issue.id,
+        portalStatus: 'in_processing',
+      );
+      await _rememberProcessing(issue.id);
+      if (mounted) await _loadIssues();
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Future<void> _viewDetail(SupervisorIssue issue) async {
     AppStateScope.read(context).openIssue(
       issue,
-      processing: _processing.contains(issue.id),
+      processing: _working(issue),
     );
     await context.push(AppRoutes.complaintDetails);
     if (mounted) await _loadIssues();
@@ -222,7 +248,10 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
                 FilterChips(
                   options: filters,
                   selected: _status,
-                  onSelected: (value) => setState(() => _status = value),
+                  onSelected: (value) {
+                    setState(() => _status = value);
+                    _loadIssues();
+                  },
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -284,7 +313,7 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
                                   onTap: () => _viewDetail(issue),
                                   onAction: issue.resolved ? null : () => _onAction(issue),
                                   onLocation: () => _openLocation(issue),
-                                  actionLabel: _processing.contains(issue.id) && !issue.resolved
+                                  actionLabel: _working(issue) && !issue.resolved
                                       ? 'Update'
                                       : 'Start',
                                 );

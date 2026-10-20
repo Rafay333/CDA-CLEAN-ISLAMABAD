@@ -5,6 +5,7 @@ import '../../components/components.dart';
 import '../../constants/app_routes.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
+import 'waste_catalog.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 
@@ -18,7 +19,7 @@ class PrimarySiteRecordScreen extends StatefulWidget {
 
 class _PrimarySiteRecordScreenState extends State<PrimarySiteRecordScreen> {
   late final TextEditingController _remarks;
-  List<EvidenceActivity> _activities = const [];
+  List<String> _activities = const [];
   bool _saving = false;
 
   @override
@@ -31,10 +32,16 @@ class _PrimarySiteRecordScreenState extends State<PrimarySiteRecordScreen> {
   }
 
   Future<void> _loadActivities() async {
+    final cnic = AppStateScope.read(context).session?.cnic;
     try {
-      final rows = await SupervisorApi().activities();
+      await WasteCatalog.ensureLoaded(cnic: cnic);
       if (!mounted) return;
-      setState(() => _activities = rows);
+      setState(() {
+        _activities = [
+          ...WasteCatalog.containerTypes,
+          for (final item in WasteCatalog.activities) item.name,
+        ];
+      });
     } on SupervisorException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
@@ -64,21 +71,12 @@ class _PrimarySiteRecordScreenState extends State<PrimarySiteRecordScreen> {
   Future<void> _save() async {
     final current = AppStateScope.read(context).waste;
     final messenger = ScaffoldMessenger.of(context);
-    EvidenceActivity? selected;
-    for (final item in _activities) {
-      if (item.activity == current.containerType) selected = item;
-    }
-    if (current.kind != WasteKind.transfer && selected == null) {
+    if (current.kind != WasteKind.transfer && (current.containerType == null || current.containerType!.isEmpty)) {
       messenger.showSnackBar(const SnackBar(content: Text('Select an activity.')));
       return;
     }
-    final uploads = uploadPhotos([...current.beforePhotos, ...current.afterPhotos]);
-    if (uploads.isEmpty) {
+    if (uploadPhotos([...current.beforePhotos, ...current.afterPhotos]).isEmpty && current.recordId == null) {
       messenger.showSnackBar(const SnackBar(content: Text('Add a photo from the camera or gallery.')));
-      return;
-    }
-    if (uploads.length > 10) {
-      messenger.showSnackBar(const SnackBar(content: Text('The server accepts 10 photos at a time.')));
       return;
     }
     final session = AppStateScope.read(context).session;
@@ -88,22 +86,43 @@ class _PrimarySiteRecordScreenState extends State<PrimarySiteRecordScreen> {
     }
     setState(() => _saving = true);
     try {
-      final saved = await SupervisorApi().uploadEvidence(
-        cnic: session.cnic,
-        activityCode: selected?.code ?? 'containers',
-        photos: uploads,
-        geoTag: geoTagFrom(current.latitude, current.longitude) ?? await currentGeoTag(),
-      );
+      final SavedFieldRecord saved;
+      if (current.recordId != null && current.afterPhotos.isNotEmpty) {
+        saved = await SupervisorApi().patchFieldRecord(
+          cnic: session.cnic,
+          id: current.recordId!,
+          after: uploadPhotos(current.afterPhotos),
+          remarks: _remarks.text.trim(),
+        );
+      } else {
+        saved = await SupervisorApi().saveFieldRecord(
+          cnic: session.cnic,
+          kind: current.kind == WasteKind.transfer ? 'transfer' : 'primary',
+          area: 'Rural',
+          ucCode: current.uc,
+          primarySiteId: current.primarySiteId,
+          locationId: current.locationId,
+          vehicleType: current.vehicleType,
+          vehicleNumber: current.vehicleNumber,
+          containerActivity: current.containerType,
+          latitude: current.latitude,
+          longitude: current.longitude,
+          remarks: _remarks.text.trim(),
+          before: uploadPhotos(current.beforePhotos),
+          after: uploadPhotos(current.afterPhotos),
+        );
+      }
       if (!mounted) return;
       AppStateScope.read(context).updateWaste((draft) {
         if (draft.kind == WasteKind.none) draft.kind = WasteKind.primary;
         if (draft.kind == WasteKind.primary) draft.area = 'Rural';
         draft.remarks = _remarks.text.trim();
+        draft.recordId = saved.id;
         draft.savedAt = DateTime.now();
       });
       AppStateScope.read(context).noteWasteSynced();
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(saved.message)));
+      messenger.showSnackBar(SnackBar(content: Text(saved.message ?? 'Record saved.')));
       context.push(AppRoutes.recordDetails);
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -138,10 +157,8 @@ class _PrimarySiteRecordScreenState extends State<PrimarySiteRecordScreen> {
             DropdownField(
               label: 'Activity',
               hint: 'Select activity',
-              items: [for (final item in _activities) item.activity],
-              value: _activities.any((item) => item.activity == waste.containerType)
-                  ? waste.containerType
-                  : null,
+              items: _activities,
+              value: _activities.contains(waste.containerType) ? waste.containerType : null,
               onChanged: (value) {
                 AppStateScope.read(context)
                     .updateWaste((draft) => draft.containerType = value);

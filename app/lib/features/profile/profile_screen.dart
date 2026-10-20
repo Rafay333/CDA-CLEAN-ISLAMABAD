@@ -50,12 +50,14 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 16),
           ListItem(
             title: 'Profile details',
-            subtitle: 'Name, father name, CNIC, address, mobile, date of birth',
+            subtitle: 'Name, father name, CNIC, mobile, date of birth',
             leading: const Icon(Icons.badge_outlined, color: AppColors.navy),
             onTap: () => context.push(AppRoutes.profileDetails),
           ),
           const SizedBox(height: 18),
           OutlineButton(label: 'Sign out', onPressed: () => confirmSignOut(context)),
+          const SizedBox(height: 10),
+          const AppVersionLabel(),
         ],
       ),
     );

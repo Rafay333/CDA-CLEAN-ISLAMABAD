@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "PmhO4KpNaSc=",
+  "dgSpecHash": "Rk0JDKeM+PA=",
   "success": true,
   "projectFilePath": "C:\\Users\\a.rafay\\Documents\\CDA-Clean-Islamabad\\server\\face-worker\\FaceWorker.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget\\dlibdotnet\\19.17.0.20190813\\dlibdotnet.19.17.0.20190813.nupkg.sha512",
-    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget\\facerecognitiondotnet\\1.2.3.13\\facerecognitiondotnet.1.2.3.13.nupkg.sha512",
-    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
-    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\ec4e00d68976bbdcc878f6d9acb6a935\\nuget\\system.drawing.common\\8.0.31\\system.drawing.common.8.0.31.nupkg.sha512"
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget\\dlibdotnet\\19.17.0.20190813\\dlibdotnet.19.17.0.20190813.nupkg.sha512",
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget\\facerecognitiondotnet\\1.2.3.13\\facerecognitiondotnet.1.2.3.13.nupkg.sha512",
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+    "C:\\Users\\a.rafay\\AppData\\Local\\Temp\\cursor-sandbox-cache\\1dee82a6a182b6f99c5ed7c14c616559\\nuget\\system.drawing.common\\8.0.32\\system.drawing.common.8.0.32.nupkg.sha512"
   ],
   "logs": []
 }

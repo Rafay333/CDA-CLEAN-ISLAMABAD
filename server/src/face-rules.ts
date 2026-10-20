@@ -1,4 +1,26 @@
-// Distances and liveness match AttendanceSystem\Server\Program.cs.
+// Liveness rules match AttendanceSystem\Server\Program.cs. The identification rule is
+// stricter than that project: see identify() below.
+
+// Attendance: a person is recognised when the agreed distance is at or under this value.
+// Glasses, a mustache, or a beard move the same person by about 0.1, so this sits a little
+// above a clean match and still under a typical different person.
+// Stricter than dlib’s 0.6 default; still allows ~0.10 shift for glasses/beard on the
+// same worker when three HD enrolment encodings are stored (dlib recommends calibrating).
+// Aligns with phone minAcceptMatchPercent 60 → distance 0.40.
+export const recogniseDistance = 0.4;
+// Attendance: the best person must beat the runner-up by at least this much, or we refuse
+// to guess between two look-alikes (two men with beards, for example).
+export const recogniseMargin = 0.12;
+// Enrolment: the three registration photos must all be this close to each other. Wide enough
+// for one photo with glasses off, or with the mustache / beard looking different.
+export const enrolSameFaceDistance = 0.6;
+// Enrolment: block a second record only when ALL three new photos look like the stored
+// face (max per-probe distance, not median). Median + 0.40 still flagged a colleague who
+// shares a beard. Same person twice lands well under this; Jawad vs Abdul Rafay does not.
+export const duplicateFaceDistance = 0.32;
+// Both: the detected face must be at least this many pixels wide. Small faces give blurry
+// encodings that drift towards everybody else, which is how a stranger gets matched.
+export const minFaceSize = 120;
 
 export function faceDistance(a: number[], b: number[]): number {
   let sum = 0;
@@ -10,16 +32,61 @@ export function faceDistance(a: number[], b: number[]): number {
   return Math.sqrt(sum);
 }
 
+function median(values: number[]): number {
+  if (values.length === 0) return Number.POSITIVE_INFINITY;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Distance between one employee's saved encodings and a burst of probe encodings.
+ *
+ * For every probe we take its closest saved encoding, then take the MEDIAN over probes.
+ * With three probes that means at least two of the three pictures must agree. The old
+ * rule took the single smallest of all 3x3 distances, so one lucky frame was enough to
+ * match a stranger.
+ */
+function perProbeClosest(known: number[][], probes: number[][]): number[] {
+  return probes.map((probe) => {
+    let d = Number.POSITIVE_INFINITY;
+    for (const saved of known) d = Math.min(d, faceDistance(saved, probe));
+    return d;
+  });
+}
+
+export function personDistance(known: number[][], probes: number[][]): number {
+  return median(perProbeClosest(known, probes));
+}
+
+/** All three new photos must look like the stored person before we call it a duplicate. */
+export function duplicatePersonDistance(known: number[][], probes: number[][]): number {
+  const perProbe = perProbeClosest(known, probes);
+  if (perProbe.length === 0) return Number.POSITIVE_INFINITY;
+  return Math.max(...perProbe);
+}
+
+export function findDuplicate(bank: Map<number, number[][]>, probes: number[][], exclude = -1) {
+  let id = -1;
+  let best = Number.POSITIVE_INFINITY;
+  for (const [employeeId, known] of bank) {
+    if (employeeId === exclude || known.length === 0) continue;
+    const distance = duplicatePersonDistance(known, probes);
+    if (distance < best) {
+      best = distance;
+      id = employeeId;
+    }
+  }
+  return { id, best };
+}
+
 export function identify(bank: Map<number, number[][]>, probes: number[][], exclude = -1) {
   let id = -1;
   let best = Number.POSITIVE_INFINITY;
   let second = Number.POSITIVE_INFINITY;
   for (const [employeeId, known] of bank) {
     if (employeeId === exclude || known.length === 0) continue;
-    let distance = Number.POSITIVE_INFINITY;
-    for (const saved of known) {
-      for (const probe of probes) distance = Math.min(distance, faceDistance(saved, probe));
-    }
+    const distance = personDistance(known, probes);
     if (distance < best) {
       second = best;
       best = distance;
@@ -29,10 +96,16 @@ export function identify(bank: Map<number, number[][]>, probes: number[][], excl
   return { id, best, second };
 }
 
-export function samePerson(encodings: number[][]): boolean {
+/** True when the match is close enough AND clearly ahead of the runner-up. */
+export function recognised(match: { id: number; best: number; second: number }): boolean {
+  if (match.id < 0 || match.best > recogniseDistance) return false;
+  return match.second - match.best >= recogniseMargin;
+}
+
+export function samePerson(encodings: number[][], limit = enrolSameFaceDistance): boolean {
   for (let i = 0; i < encodings.length; i++) {
     for (let j = i + 1; j < encodings.length; j++) {
-      if (faceDistance(encodings[i], encodings[j]) > 0.45) return false;
+      if (faceDistance(encodings[i], encodings[j]) > limit) return false;
     }
   }
   return true;

@@ -19,40 +19,68 @@ class ActivityScreen extends StatefulWidget {
 class _ActivityScreenState extends State<ActivityScreen> {
   String? _activity;
   String? _zone;
+  String? _lat;
+  String? _lng;
+  bool _locating = false;
   final List<UcPhotoGroup> _groups = [UcPhotoGroup()];
-  List<EvidenceActivity> _activities = const [];
+  List<CatalogActivity> _activities = const [];
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _loadActivities();
+    _prepare();
   }
 
-  Future<void> _loadActivities() async {
+  Future<void> _prepare() async {
+    final session = AppStateScope.read(context).session;
     try {
-      final rows = await SupervisorApi().activities();
+      await WasteCatalog.ensureLoaded(cnic: session?.cnic);
+      var rows = List<CatalogActivity>.from(WasteCatalog.activities);
+      if (rows.isEmpty && session != null) {
+        final evidence = await SupervisorApi().activities();
+        rows = [
+          for (final item in evidence)
+            CatalogActivity(code: item.code, name: item.activity, unlimitedPictures: false),
+        ];
+      }
       if (!mounted) return;
       setState(() => _activities = rows);
     } on SupervisorException catch (error) {
       if (!mounted) return;
       _snack(error.message);
     }
+    await _locate();
   }
 
-  int get _photoCount => _groups.fold<int>(0, (sum, group) => sum + group.photos.length);
-
   void _snack(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _clear() {
     setState(() {
       _activity = null;
       _zone = null;
+      _lat = null;
+      _lng = null;
       _groups.clear();
       _groups.add(UcPhotoGroup());
+    });
+  }
+
+  Future<void> _locate() async {
+    setState(() => _locating = true);
+    final geo = await currentGeoTag();
+    if (!mounted) return;
+    if (geo == null) {
+      setState(() => _locating = false);
+      return;
+    }
+    final parts = geo.split(',');
+    setState(() {
+      _locating = false;
+      _lat = parts.first.trim();
+      _lng = parts.length > 1 ? parts[1].trim() : null;
     });
   }
 
@@ -65,8 +93,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   void _addPhoto(UcPhotoGroup group, LocalPhoto photo) {
-    if (_photoCount >= 10) {
-      _snack('The server accepts 10 photos at a time.');
+    final limit = WasteCatalog.pictureLimit(_selectedActivity()?.name ?? _activity);
+    if (limit != null && group.photos.length >= limit) {
+      _snack('This activity allows $limit picture${limit == 1 ? '' : 's'} per UC.');
       return;
     }
     setState(() => group.photos.add(photo));
@@ -87,21 +116,42 @@ class _ActivityScreenState extends State<ActivityScreen> {
     ];
   }
 
+  String _label(CatalogActivity item) => item.name;
+
+  CatalogActivity? _selectedActivity() {
+    for (final item in _activities) {
+      if (item.name == _activity || item.code == _activity) return item;
+    }
+    return null;
+  }
+
   Future<void> _save() async {
-    final selected = _activities.cast<EvidenceActivity?>().where((item) => item!.activity == _activity).firstOrNull;
+    final selected = _selectedActivity();
     if (selected == null) {
       _snack('Select an activity.');
       return;
     }
-    final photos = [for (final group in _groups) ...group.photos];
-    final uploads = uploadPhotos(photos);
-    if (uploads.isEmpty) {
+    if (_zone == null) {
+      _snack('Select a zone.');
+      return;
+    }
+    for (final group in _groups) {
+      if (group.photos.isNotEmpty && (group.uc == null || group.uc!.isEmpty)) {
+        _snack('Select a union council for each set of pictures.');
+        return;
+      }
+    }
+    final filled = [for (final group in _groups) if (group.uc != null && group.photos.isNotEmpty) group];
+    if (filled.isEmpty) {
       _snack('Add a photo from the camera or gallery.');
       return;
     }
-    if (uploads.length > 10) {
-      _snack('The server accepts 10 photos at a time.');
-      return;
+    final limit = WasteCatalog.pictureLimit(selected.name);
+    for (final group in filled) {
+      if (limit != null && group.photos.length > limit) {
+        _snack('This activity allows $limit picture${limit == 1 ? '' : 's'} per UC.');
+        return;
+      }
     }
     final session = AppStateScope.read(context).session;
     if (session == null) {
@@ -110,26 +160,35 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
     setState(() => _saving = true);
     try {
-      final geo = await currentGeoTag();
-      final saved = await SupervisorApi().uploadEvidence(
+      final saved = await SupervisorApi().saveFieldRecord(
         cnic: session.cnic,
+        kind: 'activity',
+        activity: selected.name,
         activityCode: selected.code,
-        photos: uploads,
-        geoTag: geo,
+        zoneCode: _zone,
+        latitude: _lat,
+        longitude: _lng,
+        groups: [
+          for (final group in filled)
+            (ucCode: group.uc!, photos: uploadPhotos(group.photos)),
+        ],
       );
       if (!mounted) return;
       AppStateScope.read(context).updateWaste((draft) {
         draft.reset();
         draft.kind = WasteKind.activity;
-        draft.activity = selected.activity;
+        draft.activity = selected.name;
         draft.zone = _zone;
         draft.area = 'Rural';
-        draft.ucGroups.addAll(_groups);
+        draft.latitude = _lat;
+        draft.longitude = _lng;
+        draft.recordId = saved.id;
+        draft.ucGroups.addAll(filled);
         draft.savedAt = DateTime.now();
       });
       AppStateScope.read(context).noteWasteSynced();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved.message ?? 'Record saved.')));
       context.push(AppRoutes.recordDetails);
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -141,7 +200,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const rule = 'Up to 10 photos. They are saved on the server for this activity.';
+    final selected = _selectedActivity();
 
     return AppPage(
       title: 'Activity',
@@ -161,59 +220,103 @@ class _ActivityScreenState extends State<ActivityScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          DropdownField(
-            label: 'Activity',
-            hint: 'Select activity',
-            items: [for (final item in _activities) item.activity],
-            value: _activity,
-            onChanged: (value) => setState(() => _activity = value),
+          Text(
+            'Activity, zone, union council, GPS and pictures are saved as one field record.',
+            style: AppType.body.copyWith(color: AppColors.textSecondary, height: 1.4),
           ),
           const SizedBox(height: 14),
-          DropdownField(
-            label: 'Zone',
-            hint: 'Select zone',
-            items: WasteCatalog.zones,
-            value: _zone,
-            onChanged: (value) {
-              setState(() {
-                _zone = value;
-                for (final group in _groups) {
-                  group.uc = null;
-                }
-              });
-            },
-          ),
-          const SizedBox(height: 18),
-          const SectionHeader(title: 'Pictures'),
-          const SizedBox(height: 6),
-          Text(rule, style: AppType.caption),
-          const SizedBox(height: 12),
-          for (var index = 0; index < _groups.length; index++) ...[
-            _UcPictureCard(
-              index: index,
-              group: _groups[index],
-              zoneSelected: _zone != null,
-              ucItems: _ucChoices(index),
-              limit: 10,
-              canRemove: _groups.length > 1,
-              onUc: (value) => setState(() => _groups[index].uc = value),
-              onAdd: (photo) => _addPhoto(_groups[index], photo),
-              onRemovePhoto: (id) => _removePhoto(_groups[index], id),
-              onRemoveCard: () => setState(() => _groups.removeAt(index)),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.border),
             ),
-            const SizedBox(height: 12),
-          ],
-          OutlinedButton.icon(
-            onPressed: _zone == null ? null : _addGroup,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add UC'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.teal,
-              minimumSize: const Size.fromHeight(48),
-              side: const BorderSide(color: AppColors.teal),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Activity card', style: AppType.section.copyWith(fontSize: 16)),
+                if (selected != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    selected.unlimitedPictures
+                        ? 'Unlimited pictures per UC'
+                        : '${selected.pictureLimitPerUc} picture${selected.pictureLimitPerUc == 1 ? '' : 's'} per UC',
+                    style: AppType.caption,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                DropdownField(
+                  label: 'Activity',
+                  hint: 'Select activity',
+                  items: [for (final item in _activities) _label(item)],
+                  value: _activity,
+                  onChanged: (value) => setState(() => _activity = value),
+                ),
+                const SizedBox(height: 14),
+                DropdownField(
+                  label: 'Zone',
+                  hint: 'Select zone',
+                  items: WasteCatalog.zones,
+                  value: _zone,
+                  onChanged: (value) {
+                    setState(() {
+                      _zone = value;
+                      for (final group in _groups) {
+                        group.uc = null;
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                LocationCard(
+                  latitude: _lat,
+                  longitude: _lng,
+                  loading: _locating,
+                  onGetLocation: _locate,
+                ),
+                const SizedBox(height: 16),
+                Text('Pictures', style: AppType.label),
+                const SizedBox(height: 4),
+                Text(
+                  'Pictures are stored with this field record. PED daily photos stay on the evidence screen.',
+                  style: AppType.caption,
+                ),
+                const SizedBox(height: 12),
+                for (var index = 0; index < _groups.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 12),
+                  _UcBlock(
+                    index: index,
+                    group: _groups[index],
+                    zoneSelected: _zone != null,
+                    ucItems: _ucChoices(index),
+                    remaining: () {
+                      final limit = WasteCatalog.pictureLimit(_selectedActivity()?.name ?? _activity) ?? 99;
+                      final left = limit - _groups[index].photos.length;
+                      return left < 0 ? 0 : left;
+                    }(),
+                    canRemove: _groups.length > 1,
+                    onUc: (value) => setState(() => _groups[index].uc = value),
+                    onAdd: (photo) => _addPhoto(_groups[index], photo),
+                    onRemovePhoto: (id) => _removePhoto(_groups[index], id),
+                    onRemoveCard: () => setState(() => _groups.removeAt(index)),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _zone == null ? null : _addGroup,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add UC'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.teal,
+                    minimumSize: const Size.fromHeight(48),
+                    side: const BorderSide(color: AppColors.teal),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -222,13 +325,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 }
 
-class _UcPictureCard extends StatelessWidget {
-  const _UcPictureCard({
+class _UcBlock extends StatelessWidget {
+  const _UcBlock({
     required this.index,
     required this.group,
     required this.zoneSelected,
     required this.ucItems,
-    required this.limit,
+    required this.remaining,
     required this.canRemove,
     required this.onUc,
     required this.onAdd,
@@ -240,7 +343,7 @@ class _UcPictureCard extends StatelessWidget {
   final UcPhotoGroup group;
   final bool zoneSelected;
   final List<String> ucItems;
-  final int? limit;
+  final int remaining;
   final bool canRemove;
   final ValueChanged<String> onUc;
   final ValueChanged<LocalPhoto> onAdd;
@@ -249,29 +352,20 @@ class _UcPictureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final over = limit != null && group.photos.length > limit!;
-    final caption = over
-        ? 'Remove the extra pictures. This activity allows $limit for this UC.'
-        : limit == null
-        ? 'Unlimited pictures'
-        : '$limit pictures for this UC';
-
+    final limit = remaining < 0 ? 0 : remaining;
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: over ? AppColors.error : AppColors.border),
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                'UC ${index + 1}',
-                style: AppType.section.copyWith(fontSize: 15),
-              ),
+              Text('UC ${index + 1}', style: AppType.section.copyWith(fontSize: 14)),
               const Spacer(),
               if (canRemove)
                 IconButton(
@@ -293,10 +387,9 @@ class _UcPictureCard extends StatelessWidget {
           PhotoUploader(
             title: 'Pictures',
             hint: 'Upload picture',
-            caption: caption,
-            captionColor: over ? AppColors.error : null,
+            caption: 'Up to $limit photo${limit == 1 ? '' : 's'} for this UC.',
             photos: group.photos,
-            maxPhotos: over ? group.photos.length : limit,
+            maxPhotos: group.photos.length + limit,
             onAdd: onAdd,
             onRemove: onRemovePhoto,
           ),

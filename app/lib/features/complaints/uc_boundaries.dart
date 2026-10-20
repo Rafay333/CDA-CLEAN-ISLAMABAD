@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/supervisor_api.dart';
+
 class UcArea {
   const UcArea({required this.name, required this.points});
 
@@ -42,7 +44,35 @@ List<UcArea> parseUcXml(String xml) {
   return areas;
 }
 
-Future<List<UcArea>> loadUcAreas() async {
+Future<List<UcArea>> loadUcAreas({String? cnic}) async {
+  if (cnic != null && cnic.isNotEmpty) {
+    final fromApi = await _loadFromApi(cnic);
+    if (fromApi.isNotEmpty) return fromApi;
+  }
+  return _loadFromXml();
+}
+
+Future<List<UcArea>> _loadFromApi(String cnic) async {
+  final api = SupervisorApi();
+  final areas = <UcArea>[];
+  for (final zone in const ['Zone-4', 'Zone-5']) {
+    try {
+      final rows = await api.zoneBoundary(cnic, zone);
+      for (final row in rows) {
+        final points = [
+          for (final point in row.points)
+            if (point.lat != 0 || point.lng != 0) LatLng(point.lat, point.lng),
+        ];
+        if (points.length < 3) continue;
+        final name = row.name.trim().isEmpty ? row.ucCode : row.name;
+        areas.add(UcArea(name: name, points: points));
+      }
+    } catch (_) {}
+  }
+  return areas;
+}
+
+Future<List<UcArea>> _loadFromXml() async {
   const files = [
     'test/On_map/Zone-4_UCs.xml',
     'test/On_map/Zone-5_UCs.xml',

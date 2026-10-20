@@ -53,7 +53,11 @@ class _ComplaintMapScreenState extends State<ComplaintMapScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_processingKey) ?? const <String>[];
-      final rows = await SupervisorApi().issues(session.cnic);
+      final rows = await SupervisorApi().issues(
+        session.cnic,
+        status: _apiStatus,
+        query: _search.text.trim(),
+      );
       if (!mounted) return;
       final processing = <int>{
         for (final id in saved)
@@ -91,9 +95,22 @@ class _ComplaintMapScreenState extends State<ComplaintMapScreen> {
     ];
   }
 
+  String get _apiStatus {
+    return switch (_status) {
+      'Pending' => 'pending',
+      'In Processing' => 'in_processing',
+      'Resolved' => 'resolved',
+      _ => 'all',
+    };
+  }
+
+  bool _working(SupervisorIssue issue) =>
+      issue.inProcessing || _processing.value.contains(issue.id);
+
   bool _matchesStatus(SupervisorIssue issue) {
     return switch (_status) {
-      'Pending' => !issue.resolved,
+      'Pending' => !issue.resolved && !_working(issue),
+      'In Processing' => !issue.resolved && _working(issue),
       'Resolved' => issue.resolved,
       _ => true,
     };
@@ -107,7 +124,7 @@ class _ComplaintMapScreenState extends State<ComplaintMapScreen> {
 
   Future<void> _onAction(BuildContext sheetContext, SupervisorIssue issue) async {
     if (issue.resolved) return;
-    if (_processing.value.contains(issue.id)) {
+    if (_working(issue)) {
       AppStateScope.read(context).openIssue(issue, processing: true);
       await context.push(AppRoutes.afterPhotos);
       if (mounted) await _loadIssues();
@@ -125,114 +142,99 @@ class _ComplaintMapScreenState extends State<ComplaintMapScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _rememberProcessing(issue.id);
+    final session = AppStateScope.read(context).session;
+    if (session == null) return;
+    try {
+      await SupervisorApi().setIssueStatus(
+        cnic: session.cnic,
+        id: issue.id,
+        portalStatus: 'in_processing',
+      );
+      await _rememberProcessing(issue.id);
+      if (mounted) await _loadIssues();
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Future<void> _viewDetail(SupervisorIssue issue) async {
     AppStateScope.read(context).openIssue(
       issue,
-      processing: _processing.value.contains(issue.id),
+      processing: _working(issue),
     );
     await context.push(AppRoutes.complaintDetails);
     if (mounted) await _loadIssues();
   }
 
-  String _badgeLabel(SupervisorIssue issue, Set<int> processing) {
-    if (issue.resolved) return 'Completed';
-    if (processing.contains(issue.id)) return 'In Processing';
-    return 'Pending';
-  }
-
-  Color _badgeColor(SupervisorIssue issue, Set<int> processing) {
-    if (issue.resolved) return AppColors.success;
-    if (processing.contains(issue.id)) return AppColors.warning;
-    return AppColors.info;
-  }
-
   @override
   Widget build(BuildContext context) {
     return AppPage(
-      title: 'Complaints Map',
+      title: 'View Complaints',
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
             child: Column(
               children: [
                 SearchBarField(
                   controller: _search,
-                  hint: 'Search complaints',
+                  hint: 'Search complaints or UC',
                   onChanged: (_) => setState(() {
                     if (_selectedId != null && !_visibleIssues.any((issue) => issue.id == _selectedId)) {
                       _selectedId = null;
                     }
                   }),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 FilterChips(
-                  options: const ['All', 'Pending', 'Resolved'],
+                  options: const ['All', 'Pending', 'In Processing', 'Resolved'],
                   selected: _status,
-                  onSelected: (value) => setState(() {
-                    _status = value;
-                    if (_selectedId != null && !_visibleIssues.any((issue) => issue.id == _selectedId)) {
-                      _selectedId = null;
-                    }
-                  }),
+                  onSelected: (value) {
+                    setState(() {
+                      _status = value;
+                      if (_selectedId != null && !_visibleIssues.any((issue) => issue.id == _selectedId)) {
+                        _selectedId = null;
+                      }
+                    });
+                    _loadIssues();
+                  },
                 ),
+                if (_loadError != null) ...[
+                  const SizedBox(height: 8),
+                  InlineMessage(tone: InlineTone.error, message: _loadError!),
+                ],
               ],
             ),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.all(Radius.circular(16)),
-                child: _ComplaintsMap(
-                  issues: _visibleIssues,
-                  processing: _processing,
-                  selectedId: _selectedId,
-                  onSelect: (issue) => setState(() => _selectedId = issue?.id),
-                  onAction: _onAction,
-                  onViewDetail: _viewDetail,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x140F172A),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: _ComplaintsMap(
+                    issues: _visibleIssues,
+                    processing: _processing,
+                    selectedId: _selectedId,
+                    ucQuery: _search.text,
+                    onSelect: (issue) => setState(() => _selectedId = issue?.id),
+                    onAction: _onAction,
+                    onViewDetail: _viewDetail,
+                  ),
                 ),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              children: [
-                if (_loadError != null)
-                  InlineMessage(tone: InlineTone.error, message: _loadError!)
-                else if (_visibleIssues.isEmpty)
-                  const InlineMessage(message: 'No complaints match this filter.')
-                else
-                  ValueListenableBuilder<Set<int>>(
-                    valueListenable: _processing,
-                    builder: (context, processing, _) {
-                      return SizedBox(
-                        height: 168,
-                        child: ListView.separated(
-                          itemCount: _visibleIssues.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final issue = _visibleIssues[index];
-                            final selected = issue.id == _selectedId;
-                            return ListItem(
-                              title: issue.activity.isEmpty ? 'Complaint ${issue.id}' : issue.activity,
-                              subtitle: issue.description.isEmpty ? issue.sector : issue.description,
-                              trailing: StatusBadge(
-                                label: _badgeLabel(issue, processing),
-                                color: _badgeColor(issue, processing),
-                              ),
-                              onTap: () => setState(() => _selectedId = selected ? null : issue.id),
-                            );
-                          },
-                        ),
-                      );
-                    },
-                  ),
-              ],
             ),
           ),
         ],
@@ -249,6 +251,7 @@ class _ComplaintsMap extends StatefulWidget {
     required this.onSelect,
     required this.onAction,
     required this.onViewDetail,
+    this.ucQuery = '',
     this.initialAreas,
     this.allowFullScreen = true,
   });
@@ -256,6 +259,7 @@ class _ComplaintsMap extends StatefulWidget {
   final List<SupervisorIssue> issues;
   final ValueNotifier<Set<int>> processing;
   final int? selectedId;
+  final String ucQuery;
   final ValueChanged<SupervisorIssue?> onSelect;
   final Future<void> Function(BuildContext context, SupervisorIssue issue) onAction;
   final Future<void> Function(SupervisorIssue issue) onViewDetail;
@@ -269,14 +273,14 @@ class _ComplaintsMap extends StatefulWidget {
 class _ComplaintsMapState extends State<_ComplaintsMap> {
   static const _islamabad = LatLng(33.6844, 73.0479);
   static const _fills = <Color>[
-    Color(0xFF0F766E),
-    Color(0xFF1D4ED8),
-    Color(0xFFB45309),
+    Color(0xFF0D9488),
+    Color(0xFF2563EB),
+    Color(0xFFD97706),
     Color(0xFF7C3AED),
-    Color(0xFFBE123C),
-    Color(0xFF047857),
-    Color(0xFF0369A1),
-    Color(0xFFA16207),
+    Color(0xFFE11D48),
+    Color(0xFF059669),
+    Color(0xFF0284C7),
+    Color(0xFFCA8A04),
   ];
 
   final _controller = MapController();
@@ -321,6 +325,18 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
         });
       }
     }
+    if (widget.ucQuery != oldWidget.ucQuery && _mapReady) {
+      final matched = _visibleAreas;
+      if (matched.length == 1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _mapReady) _fit(matched);
+        });
+      } else if (widget.ucQuery.trim().isEmpty && matched.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _mapReady) _fit(matched);
+        });
+      }
+    }
   }
 
   @override
@@ -333,7 +349,8 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
 
   Future<void> _load() async {
     try {
-      final areas = await loadUcAreas();
+      final cnic = AppStateScope.read(context).session?.cnic;
+      final areas = await loadUcAreas(cnic: cnic);
       if (!mounted) return;
       setState(() {
         _areas = areas;
@@ -360,16 +377,23 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => AppPage(
-          title: 'Complaints Map',
-          body: _ComplaintsMap(
-            issues: widget.issues,
-            processing: widget.processing,
-            selectedId: _selectedId,
-            onSelect: widget.onSelect,
-            onAction: widget.onAction,
-            onViewDetail: widget.onViewDetail,
-            initialAreas: _areas,
-            allowFullScreen: false,
+          title: 'Union Councils',
+          body: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _ComplaintsMap(
+                issues: widget.issues,
+                processing: widget.processing,
+                selectedId: _selectedId,
+                ucQuery: widget.ucQuery,
+                onSelect: widget.onSelect,
+                onAction: widget.onAction,
+                onViewDetail: widget.onViewDetail,
+                initialAreas: _areas,
+                allowFullScreen: false,
+              ),
+            ),
           ),
         ),
       ),
@@ -383,13 +407,18 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
     _controller.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(points),
-        padding: const EdgeInsets.all(16),
-        maxZoom: 14,
+        padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
+        maxZoom: 13.5,
       ),
     );
   }
 
-  List<UcArea> get _visibleAreas => _areas;
+  List<UcArea> get _visibleAreas {
+    final query = widget.ucQuery.trim();
+    if (query.isEmpty) return _areas;
+    final matched = [for (final area in _areas) if (area.matches(query)) area];
+    return matched.isEmpty ? _areas : matched;
+  }
 
   SupervisorIssue? _issueById(int? id) {
     if (id == null) return null;
@@ -469,17 +498,22 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
                     points: areas[i].points,
                     hitValue: areas[i],
                     label: areas[i].code,
-                    labelStyle: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      shadows: [
-                        Shadow(color: Color(0xCC0F172A), blurRadius: 4),
+                    rotateLabel: false,
+                    labelPlacementCalculator:
+                        const PolygonLabelPlacementCalculator.polylabel(),
+                    labelStyle: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontSize: areas.length <= 8 ? 12 : 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                      shadows: const [
+                        Shadow(color: Color(0xE6FFFFFF), blurRadius: 6),
+                        Shadow(color: Color(0xB3FFFFFF), blurRadius: 2),
                       ],
                     ),
-                    color: _fills[i % _fills.length].withValues(alpha: 0.38),
-                    borderColor: _fills[i % _fills.length],
-                    borderStrokeWidth: 2,
+                    color: _fills[i % _fills.length].withValues(alpha: 0.22),
+                    borderColor: _fills[i % _fills.length].withValues(alpha: 0.92),
+                    borderStrokeWidth: 1.6,
                   ),
               ],
             ),
@@ -511,17 +545,45 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
           ],
         ),
         Positioned(
-          top: 10,
-          right: 10,
+          top: 12,
+          left: 12,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.94),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(color: Color(0x140F172A), blurRadius: 10, offset: Offset(0, 3)),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text(
+                _loading
+                    ? 'Loading union councils…'
+                    : '${areas.length} UC${areas.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 12,
+          right: 12,
           child: Column(
             children: [
-              if (widget.allowFullScreen)
+              if (widget.allowFullScreen) ...[
                 _MapButton(
                   icon: Icons.open_in_full_rounded,
                   tooltip: 'Full map',
                   onPressed: _openFullMap,
                 ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
+              ],
               _MapButton(
                 icon: Icons.add_rounded,
                 tooltip: 'Zoom in',
@@ -530,20 +592,26 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
               const SizedBox(height: 8),
               _MapButton(
                 icon: Icons.remove_rounded,
-                tooltip: 'Zoom out to union councils',
-                onPressed: _mapReady ? () => _fit(areas) : null,
+                tooltip: 'Zoom out',
+                onPressed: _mapReady ? () => _zoomBy(-1) : null,
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.fit_screen_rounded,
+                tooltip: 'Show all union councils',
+                onPressed: _mapReady ? () => _fit(_areas) : null,
               ),
             ],
           ),
         ),
         if (selected != null)
           Positioned(
-            left: 10,
-            right: 10,
-            bottom: 10,
+            left: 12,
+            right: 12,
+            bottom: 12,
             child: _PointActions(
               issue: selected,
-              processing: widget.processing.value.contains(selected.id),
+              processing: selected.inProcessing || widget.processing.value.contains(selected.id),
               onAction: () => widget.onAction(context, selected),
               onLocation: () => _openLocation(selected),
               onViewDetail: () => widget.onViewDetail(selected),
@@ -552,12 +620,16 @@ class _ComplaintsMapState extends State<_ComplaintsMap> {
         if (_loading) const Center(child: CircularProgressIndicator()),
         if (_error != null)
           Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF0F172A)),
+                ),
               ),
             ),
           ),
@@ -765,6 +837,6 @@ LatLng? _point(SupervisorIssue? issue) {
 
 Color _pinColor(SupervisorIssue issue, Set<int> processing) {
   if (issue.resolved) return AppColors.success;
-  if (processing.contains(issue.id)) return AppColors.warning;
+  if (issue.inProcessing || processing.contains(issue.id)) return AppColors.warning;
   return const Color(0xFFE11D48);
 }
