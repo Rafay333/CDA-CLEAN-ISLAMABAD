@@ -111,6 +111,9 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
         : people.where((person) {
             return '${person.name} ${person.cnic}'.toLowerCase().contains(query);
           }).toList();
+    final present = people.length;
+    final checkedIn = people.where((person) => person.checkIn != null).length;
+    final checkedOut = people.where((person) => person.checkOut != null).length;
     return AppPage(
       title: 'Attendance log',
       actions: [
@@ -136,6 +139,10 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
             },
           ),
           const SizedBox(height: 12),
+          if (!_loading && _error == null) ...[
+            _DaySummary(present: present, checkedIn: checkedIn, checkedOut: checkedOut),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _search,
             decoration: const InputDecoration(
@@ -194,6 +201,102 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
     final people = byId.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return people;
+  }
+}
+
+class _DaySummary extends StatelessWidget {
+  const _DaySummary({required this.present, required this.checkedIn, required this.checkedOut});
+
+  final int present;
+  final int checkedIn;
+  final int checkedOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Row(
+        children: [
+          _SummaryStat(
+            label: 'Present',
+            value: present,
+            icon: Icons.groups_rounded,
+            color: AppColors.emerald,
+          ),
+          const _SummaryDivider(),
+          _SummaryStat(
+            label: 'Check in',
+            value: checkedIn,
+            icon: Icons.login_rounded,
+            color: AppColors.teal,
+          ),
+          const _SummaryDivider(),
+          _SummaryStat(
+            label: 'Check out',
+            value: checkedOut,
+            icon: Icons.logout_rounded,
+            color: AppColors.navy,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        child: Column(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$value',
+              style: AppType.title.copyWith(fontSize: 22, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 2),
+            Text(label, style: AppType.caption, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryDivider extends StatelessWidget {
+  const _SummaryDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(width: 1, height: 56, color: AppColors.border);
   }
 }
 
