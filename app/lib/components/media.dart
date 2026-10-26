@@ -77,7 +77,7 @@ class PhotoUploader extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Camera or gallery',
+                      'Take picture or choose from gallery',
                       style: AppType.caption,
                       textAlign: TextAlign.center,
                     ),
@@ -131,7 +131,7 @@ class PhotoUploader extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.photo_camera_outlined),
-                  label: Text('Camera', style: AppType.button.copyWith(color: AppColors.white)),
+                  label: Text('Take Picture', style: AppType.button.copyWith(color: AppColors.white)),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
@@ -145,7 +145,7 @@ class PhotoUploader extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Gallery'),
+                  label: const Text('Choose from Gallery'),
                 ),
               ],
             ),
@@ -154,9 +154,58 @@ class PhotoUploader extends StatelessWidget {
       },
     );
     if (source is! ImageSource || !context.mounted) return;
+
+    CameraDevice? cameraDevice;
+    if (source == ImageSource.camera) {
+      cameraDevice = await showAppSheet<CameraDevice>(
+        context,
+        builder: (context) {
+          return SheetScaffold(
+            title: 'Select camera',
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(CameraDevice.rear),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.emerald,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                    ),
+                    icon: const Icon(Icons.camera_rear_outlined),
+                    label: Text('Back camera', style: AppType.button.copyWith(color: AppColors.white)),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(CameraDevice.front),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.navy,
+                      minimumSize: const Size.fromHeight(48),
+                      side: const BorderSide(color: AppColors.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                    ),
+                    icon: const Icon(Icons.camera_front_outlined),
+                    label: const Text('Front camera'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      if (cameraDevice is! CameraDevice || !context.mounted) return;
+    }
+
     try {
       final file = await ImagePicker().pickImage(
         source: source,
+        preferredCameraDevice: cameraDevice ?? CameraDevice.rear,
         imageQuality: 70,
         maxWidth: 1600,
       );

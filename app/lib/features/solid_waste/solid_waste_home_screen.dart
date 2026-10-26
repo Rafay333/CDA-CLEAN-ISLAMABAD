@@ -80,7 +80,7 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
                   badge: const Color(0xFFE5F6EE),
                   wash: const Color(0xFFD7F3E6),
                   title: 'Tagging',
-                  subtitle: 'Tag a container once.',
+                  subtitle: 'Zone → site → container → GPS + photo.',
                   onTap: () => context.push(AppRoutes.wasteTagging),
                 ),
                 const SizedBox(height: 14),

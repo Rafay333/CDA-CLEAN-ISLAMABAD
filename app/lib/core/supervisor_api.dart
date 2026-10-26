@@ -493,12 +493,21 @@ class CatalogActivity {
 }
 
 class CatalogSite {
-  const CatalogSite({required this.id, required this.name, this.ucCode, this.zoneCode});
+  const CatalogSite({
+    required this.id,
+    required this.name,
+    this.ucCode,
+    this.zoneCode,
+    this.latitude,
+    this.longitude,
+  });
 
   final int id;
   final String name;
   final String? ucCode;
   final String? zoneCode;
+  final double? latitude;
+  final double? longitude;
 
   factory CatalogSite.fromJson(Map<String, dynamic> json) {
     return CatalogSite(
@@ -506,6 +515,93 @@ class CatalogSite {
       name: _text(json['name']),
       ucCode: _optional(json['uc_code']),
       zoneCode: _optional(json['zone_code']),
+      latitude: _double(json['latitude']),
+      longitude: _double(json['longitude']),
+    );
+  }
+}
+
+/// Primary site row from `GET /api/supervisor/primary-sites`.
+class TaggingPrimarySite {
+  const TaggingPrimarySite({
+    required this.id,
+    required this.name,
+    this.zoneCode,
+    this.latitude,
+    this.longitude,
+    this.containerCount = 0,
+    this.taggedCount = 0,
+  });
+
+  final int id;
+  final String name;
+  final String? zoneCode;
+  final double? latitude;
+  final double? longitude;
+  final int containerCount;
+  final int taggedCount;
+
+  factory TaggingPrimarySite.fromJson(Map<String, dynamic> json) {
+    return TaggingPrimarySite(
+      id: _int(json['id']),
+      name: _text(json['name']),
+      zoneCode: _optional(json['zone_code']),
+      latitude: _double(json['latitude']),
+      longitude: _double(json['longitude']),
+      containerCount: _int(json['container_count']),
+      taggedCount: _int(json['tagged_count']),
+    );
+  }
+}
+
+/// Container under a primary site for tagging.
+class TaggingContainer {
+  const TaggingContainer({
+    required this.containerId,
+    required this.containerName,
+    this.primarySiteId,
+    this.primarySiteName,
+    this.zoneCode,
+    this.latitude,
+    this.longitude,
+    this.siteLatitude,
+    this.siteLongitude,
+    this.tagStatus = 'No',
+    this.isTagged = false,
+    this.taggingDate,
+  });
+
+  final int containerId;
+  final String containerName;
+  final int? primarySiteId;
+  final String? primarySiteName;
+  final String? zoneCode;
+  final double? latitude;
+  final double? longitude;
+  final double? siteLatitude;
+  final double? siteLongitude;
+  final String tagStatus;
+  final bool isTagged;
+  final String? taggingDate;
+
+  double? get displayLat => latitude ?? siteLatitude;
+  double? get displayLng => longitude ?? siteLongitude;
+
+  factory TaggingContainer.fromJson(Map<String, dynamic> json) {
+    return TaggingContainer(
+      containerId: _int(json['container_id'] ?? json['id']),
+      containerName: _text(json['container_name'] ?? json['name'] ?? json['container_code']),
+      primarySiteId: _int(json['primary_site_id']) == 0 ? null : _int(json['primary_site_id']),
+      primarySiteName: _optional(json['primary_site_name']),
+      zoneCode: _optional(json['zone_code']),
+      latitude: _double(json['latitude']),
+      longitude: _double(json['longitude']),
+      siteLatitude: _double(json['site_latitude']),
+      siteLongitude: _double(json['site_longitude']),
+      tagStatus: _optional(json['tag_status']) ?? (_flag(json['is_tagged']) ? 'Yes' : 'No'),
+      isTagged: _flag(json['is_tagged']) ||
+          (_optional(json['tag_status'])?.toLowerCase() == 'yes'),
+      taggingDate: _optional(json['tagging_date']),
     );
   }
 }
@@ -1145,6 +1241,70 @@ class SupervisorApi {
     return SupervisorCatalog.fromJson(data);
   }
 
+  /// Preferred tagging picker: sites for Zone-4 / Zone-5 (omit zone for all).
+  Future<List<TaggingPrimarySite>> primarySites(String cnic, {String? zoneCode}) async {
+    final data = _map(
+      await _send(
+        dio.get(
+          '/api/supervisor/primary-sites',
+          queryParameters: {
+            'supervisor_cnic': cnic,
+            if (zoneCode != null && zoneCode.isNotEmpty) 'zone_code': zoneCode,
+          },
+        ),
+      ),
+    );
+    final items = data['items'];
+    return [
+      if (items is List)
+        for (final item in items)
+          if (item is Map) TaggingPrimarySite.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<({
+    int primarySiteId,
+    String? primarySiteName,
+    String? zoneCode,
+    double? siteLatitude,
+    double? siteLongitude,
+    List<TaggingContainer> items,
+  })> containersForPrimarySite(String cnic, int primarySiteId) async {
+    final data = _map(
+      await _send(
+        dio.get(
+          '/api/supervisor/primary-sites/$primarySiteId/containers',
+          queryParameters: {'supervisor_cnic': cnic},
+        ),
+      ),
+    );
+    final items = data['items'];
+    return (
+      primarySiteId: _int(data['primary_site_id']) == 0 ? primarySiteId : _int(data['primary_site_id']),
+      primarySiteName: _optional(data['primary_site_name']),
+      zoneCode: _optional(data['zone_code']),
+      siteLatitude: _double(data['site_latitude']),
+      siteLongitude: _double(data['site_longitude']),
+      items: [
+        if (items is List)
+          for (final item in items)
+            if (item is Map) TaggingContainer.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+
+  Future<TaggingContainer> containerDetail(String cnic, int containerId) async {
+    final data = _map(
+      await _send(
+        dio.get(
+          '/api/supervisor/containers/$containerId',
+          queryParameters: {'supervisor_cnic': cnic},
+        ),
+      ),
+    );
+    return TaggingContainer.fromJson(data);
+  }
+
   Future<List<UcBoundary>> zoneBoundary(String cnic, String zoneCode) async {
     final data = _map(
       await _send(
@@ -1183,6 +1343,7 @@ class SupervisorApi {
     String? zoneCode,
     String? tagging,
     String? containerType,
+    int? containerId,
     List<UploadPhoto> before = const [],
     List<UploadPhoto> after = const [],
     List<UploadPhoto> bulk = const [],
@@ -1198,6 +1359,7 @@ class SupervisorApi {
     if (remarks != null && remarks.trim().isNotEmpty) form.fields.add(MapEntry('remarks', remarks.trim()));
     if (ucCode != null && ucCode.isNotEmpty) form.fields.add(MapEntry('uc_code', ucCode));
     if (primarySiteId != null) form.fields.add(MapEntry('primary_site_id', '$primarySiteId'));
+    if (containerId != null) form.fields.add(MapEntry('container_id', '$containerId'));
     if (locationId != null) form.fields.add(MapEntry('location_id', '$locationId'));
     if (vehicleType != null && vehicleType.isNotEmpty) form.fields.add(MapEntry('vehicle_type', vehicleType));
     if (vehicleNumber != null && vehicleNumber.isNotEmpty) form.fields.add(MapEntry('vehicle_number', vehicleNumber));
@@ -1432,17 +1594,30 @@ String? geoTagFrom(String? latitude, String? longitude) {
   return '$lat,$lng';
 }
 
+/// Opens the system **Location** screen when live location is off.
+/// Throws [SupervisorException] with a short on-screen message.
+Future<void> ensureLiveLocationEnabled() async {
+  final enabled = await Geolocator.isLocationServiceEnabled();
+  if (!enabled) {
+    await Geolocator.openLocationSettings();
+    throw SupervisorException('Enable live location, then try again.');
+  }
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+  if (permission == LocationPermission.deniedForever) {
+    await Geolocator.openAppSettings();
+    throw SupervisorException('Allow location for this app, then try again.');
+  }
+  if (permission == LocationPermission.denied) {
+    throw SupervisorException('Enable live location permission, then try again.');
+  }
+}
+
 Future<String?> currentGeoTag() async {
   try {
-    final enabled = await Geolocator.isLocationServiceEnabled();
-    if (!enabled) return null;
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      return null;
-    }
+    await ensureLiveLocationEnabled();
     final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.medium,
@@ -1450,6 +1625,8 @@ Future<String?> currentGeoTag() async {
       ),
     );
     return '${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}';
+  } on SupervisorException {
+    rethrow;
   } catch (_) {
     return null;
   }
@@ -1465,13 +1642,7 @@ Future<String> supervisorDeviceId() async {
 }
 
 Future<Position> supervisorFacePosition() async {
-  var permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
-  }
-  if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-    throw SupervisorException('Location permission needed.');
-  }
+  await ensureLiveLocationEnabled();
   final position = await Geolocator.getCurrentPosition(
     locationSettings: const LocationSettings(
       accuracy: LocationAccuracy.high,

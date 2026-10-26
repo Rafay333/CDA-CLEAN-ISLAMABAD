@@ -46,20 +46,31 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
 
   Future<void> _locate() async {
     setState(() => _locating = true);
-    final geo = await currentGeoTag();
-    if (!mounted) return;
-    String? lat;
-    String? lng;
-    if (geo != null && geo.contains(',')) {
-      final parts = geo.split(',');
-      lat = parts[0].trim();
-      lng = parts[1].trim();
+    try {
+      final geo = await currentGeoTag();
+      if (!mounted) return;
+      String? lat;
+      String? lng;
+      if (geo != null && geo.contains(',')) {
+        final parts = geo.split(',');
+        lat = parts[0].trim();
+        lng = parts[1].trim();
+      }
+      setState(() {
+        _lat = lat;
+        _lng = lng;
+        _locating = false;
+      });
+      if (geo == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enable live location, then try again.')),
+        );
+      }
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      setState(() => _locating = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
     }
-    setState(() {
-      _lat = lat;
-      _lng = lng;
-      _locating = false;
-    });
   }
 
   void _addPhoto(LocalPhoto photo) {

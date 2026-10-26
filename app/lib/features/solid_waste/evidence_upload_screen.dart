@@ -92,12 +92,19 @@ class _EvidenceUploadScreenState extends State<EvidenceUploadScreen> {
 
   Future<void> _locate() async {
     setState(() => _locating = true);
-    final geo = await currentGeoTag();
-    if (!mounted) return;
-    setState(() {
-      _geo = geo;
-      _locating = false;
-    });
+    try {
+      final geo = await currentGeoTag();
+      if (!mounted) return;
+      setState(() {
+        _geo = geo;
+        _locating = false;
+      });
+      if (geo == null) _snack('Enable live location, then try again.');
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      setState(() => _locating = false);
+      _snack(error.message);
+    }
   }
 
   void _snack(String message) {

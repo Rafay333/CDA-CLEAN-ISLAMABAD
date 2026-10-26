@@ -70,18 +70,25 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   Future<void> _locate() async {
     setState(() => _locating = true);
-    final geo = await currentGeoTag();
-    if (!mounted) return;
-    if (geo == null) {
+    try {
+      final geo = await currentGeoTag();
+      if (!mounted) return;
+      if (geo == null) {
+        setState(() => _locating = false);
+        _snack('Enable live location, then try again.');
+        return;
+      }
+      final parts = geo.split(',');
+      setState(() {
+        _locating = false;
+        _lat = parts.first.trim();
+        _lng = parts.length > 1 ? parts[1].trim() : null;
+      });
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
       setState(() => _locating = false);
-      return;
+      _snack(error.message);
     }
-    final parts = geo.split(',');
-    setState(() {
-      _locating = false;
-      _lat = parts.first.trim();
-      _lng = parts.length > 1 ? parts[1].trim() : null;
-    });
   }
 
   void _addGroup() {

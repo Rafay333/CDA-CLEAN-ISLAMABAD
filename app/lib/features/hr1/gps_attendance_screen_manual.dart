@@ -1,6 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' show Position;
 
 import '../../components/components.dart';
 import '../../core/hr1_api_manual.dart';
@@ -212,21 +212,14 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
   }
 
   Future<void> _ensureLocationOn() async {
-    final serviceOn = await Geolocator.isLocationServiceEnabled();
-    if (!serviceOn) {
-      await Geolocator.openLocationSettings();
-      throw SupervisorException('Turn on location, then take the attendance photo again.');
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.deniedForever) {
-      await Geolocator.openAppSettings();
-      throw SupervisorException('Allow location for this app, then take the attendance photo again.');
-    }
-    if (permission == LocationPermission.denied) {
-      throw SupervisorException('Location permission is required to mark attendance.');
+    try {
+      await ensureLiveLocationEnabled();
+    } on SupervisorException catch (error) {
+      final lower = error.message.toLowerCase();
+      if (lower.contains('live location') || lower.contains('allow location')) {
+        throw SupervisorException('${error.message} Then take the attendance photo again.');
+      }
+      rethrow;
     }
   }
 

@@ -67,8 +67,44 @@ class RecordDetailsScreen extends StatelessWidget {
           if (waste.kind == WasteKind.tagging) ...[
             const SizedBox(height: 8),
             InfoCard(
+              label: 'Zone',
+              value: displayOr(waste.zone, AppCopy.notSelected),
+            ),
+            const SizedBox(height: 8),
+            InfoCard(
               label: 'Container Type',
               value: displayOr(waste.containerType, AppCopy.notSelected),
+            ),
+            const SizedBox(height: 8),
+            InfoCard(
+              label: 'Primary Site',
+              value: displayOr(waste.primarySite, AppCopy.notSelected),
+            ),
+            const SizedBox(height: 8),
+            InfoCard(
+              label: 'Container',
+              value: displayOr(
+                waste.containerName ??
+                    (waste.containerId == null ? null : '#${waste.containerId}'),
+                AppCopy.notSelected,
+              ),
+            ),
+            const SizedBox(height: 8),
+            InfoCard(
+              label: 'GPS',
+              value: displayOr(
+                [
+                  if ((waste.latitude ?? '').isNotEmpty) 'Lat ${waste.latitude}',
+                  if ((waste.longitude ?? '').isNotEmpty) 'Lng ${waste.longitude}',
+                ].join(' · '),
+                AppCopy.notSelected,
+              ),
+            ),
+            const SizedBox(height: 18),
+            _PhotoStrip(
+              title: 'Tagging photo',
+              photos: waste.beforePhotos,
+              emptyLabel: 'No picture',
             ),
           ],
           if (waste.kind == WasteKind.bulk) ...[

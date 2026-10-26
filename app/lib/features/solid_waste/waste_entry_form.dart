@@ -111,19 +111,25 @@ class _WasteEntryFormState extends State<WasteEntryForm> {
   Future<void> _locate() async {
     final state = AppStateScope.read(context);
     state.updateWaste((draft) => draft.locating = true);
-    final geo = await currentGeoTag();
-    if (!mounted) return;
-    if (geo == null) {
+    try {
+      final geo = await currentGeoTag();
+      if (!mounted) return;
+      if (geo == null) {
+        state.updateWaste((draft) => draft.locating = false);
+        _snack('Enable live location, then try again.');
+        return;
+      }
+      final parts = geo.split(',');
+      state.updateWaste((draft) {
+        draft.locating = false;
+        draft.latitude = parts.first;
+        draft.longitude = parts.length > 1 ? parts[1] : null;
+      });
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
       state.updateWaste((draft) => draft.locating = false);
-      _snack('Location is not available.');
-      return;
+      _snack(error.message);
     }
-    final parts = geo.split(',');
-    state.updateWaste((draft) {
-      draft.locating = false;
-      draft.latitude = parts.first;
-      draft.longitude = parts.length > 1 ? parts[1] : null;
-    });
   }
 
   void _addPhoto(LocalPhoto photo) {

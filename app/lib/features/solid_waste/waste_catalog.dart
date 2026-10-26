@@ -70,6 +70,39 @@ class WasteCatalog {
     return list;
   }
 
+  /// Display labels for UC dropdowns (name when available, else code).
+  static List<String> get allUcLabels {
+    if (_catalog.ucs.isNotEmpty) {
+      return [for (final uc in _catalog.ucs) _ucLabel(uc)];
+    }
+    return allUcs;
+  }
+
+  static String? ucCodeForLabel(String? label) {
+    if (label == null || label.isEmpty) return null;
+    for (final uc in _catalog.ucs) {
+      if (_ucLabel(uc) == label || uc.code == label || uc.name == label) return uc.code;
+    }
+    for (final code in allUcs) {
+      if (code == label) return code;
+    }
+    return label;
+  }
+
+  static String? ucLabelForCode(String? code) {
+    if (code == null || code.isEmpty) return null;
+    for (final uc in _catalog.ucs) {
+      if (uc.code == code) return _ucLabel(uc);
+    }
+    return code;
+  }
+
+  static String _ucLabel(CatalogUc uc) {
+    final name = uc.name.trim();
+    if (name.isEmpty || name == uc.code) return uc.code;
+    return name;
+  }
+
   static List<String> ucsFor(String? zone) {
     if (zone == null || zone.isEmpty) return const [];
     if (_catalog.ucs.isNotEmpty) {

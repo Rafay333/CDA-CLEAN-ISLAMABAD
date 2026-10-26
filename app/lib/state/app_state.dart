@@ -143,6 +143,8 @@ class WasteDraft {
   String? activity;
   String? zone;
   String? containerType;
+  int? containerId;
+  String? containerName;
   String? tcpName;
   bool zeroWaste = false;
   int? recordId;
@@ -168,6 +170,8 @@ class WasteDraft {
     activity = null;
     zone = null;
     containerType = null;
+    containerId = null;
+    containerName = null;
     tcpName = null;
     zeroWaste = false;
     recordId = null;
