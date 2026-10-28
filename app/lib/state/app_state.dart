@@ -9,7 +9,7 @@ import '../core/supervisor_api.dart';
 
 enum ComplaintStatus { none, fresh, inProcessing, resolved }
 
-enum WasteKind { none, primary, transfer, activity, tagging, bulk }
+enum WasteKind { none, activity, tagging }
 
 enum ScanPhase { ready, scanning, complete }
 
@@ -145,8 +145,6 @@ class WasteDraft {
   String? containerType;
   int? containerId;
   String? containerName;
-  String? tcpName;
-  bool zeroWaste = false;
   int? recordId;
   final List<LocalPhoto> beforePhotos = [];
   final List<LocalPhoto> afterPhotos = [];
@@ -172,8 +170,6 @@ class WasteDraft {
     containerType = null;
     containerId = null;
     containerName = null;
-    tcpName = null;
-    zeroWaste = false;
     recordId = null;
     beforePhotos.clear();
     afterPhotos.clear();
@@ -436,10 +432,7 @@ Color complaintStatusColor(ComplaintStatus status) {
 String wasteKindLabel(WasteKind kind) {
   return switch (kind) {
     WasteKind.none => 'Record',
-    WasteKind.primary => 'Primary Site',
-    WasteKind.transfer => 'Transfer Station',
     WasteKind.activity => 'Activity',
     WasteKind.tagging => 'Tagging',
-    WasteKind.bulk => 'Bulk Waste',
   };
 }

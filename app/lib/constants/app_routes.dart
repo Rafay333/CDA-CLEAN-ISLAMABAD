@@ -20,12 +20,8 @@ class AppRoutes {
   static const waste = '/waste';
   static const wasteEvidenceUpload = '/waste/evidence/upload';
   static const wasteEvidenceHistory = '/waste/evidence/history';
-  static const primarySite = '/waste/primary';
-  static const primaryRecord = '/waste/primary/record';
-  static const transferStation = '/waste/transfer';
   static const wasteActivity = '/waste/activity';
   static const wasteTagging = '/waste/tagging';
-  static const bulkWaste = '/waste/bulk';
   static const recordDetails = '/waste/record';
   static const complaints = '/complaints';
   static const complaintMap = '/complaints/map';

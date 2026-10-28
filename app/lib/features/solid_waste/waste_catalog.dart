@@ -8,7 +8,6 @@ class WasteCatalog {
   const WasteCatalog._();
 
   static const containerTagging = 'Tagging of Containers';
-  static const transferModes = <String>['Vehicle trips', 'Zero Waste'];
   static const picturesPerUc = 2;
 
   static SupervisorCatalog _catalog = const SupervisorCatalog();
@@ -23,10 +22,9 @@ class WasteCatalog {
   }
 
   static List<String> get containerTypes => _catalog.containerTypes;
-  static List<String> get tcpNames => _catalog.tcpNames;
   static List<String> get vehicleTypes => _catalog.vehicleTypes;
+  static List<CatalogVehicle> get vehicles => _catalog.vehicles;
   static List<CatalogActivity> get activities => _catalog.activities;
-  static List<CatalogSite> get primarySites => _catalog.primarySites;
   static List<CatalogLocation> get locations => _catalog.locations;
 
   static bool allowsUnlimitedPictures(String? activity) {
@@ -124,11 +122,6 @@ class WasteCatalog {
     }
     list.sort((a, b) => _ucNumber(a).compareTo(_ucNumber(b)));
     return list;
-  }
-
-  static List<CatalogSite> sitesFor(String? uc) {
-    if (uc == null || uc.isEmpty) return _catalog.primarySites;
-    return [for (final site in _catalog.primarySites) if (site.ucCode == null || site.ucCode == uc) site];
   }
 
   static List<CatalogLocation> locationsFor(String? uc) {

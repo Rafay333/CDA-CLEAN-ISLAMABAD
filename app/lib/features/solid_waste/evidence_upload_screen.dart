@@ -6,6 +6,7 @@ import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
+import '../../utils/gps_photo_stamp.dart';
 
 class EvidenceUploadArgs {
   const EvidenceUploadArgs({
@@ -111,18 +112,89 @@ class _EvidenceUploadScreenState extends State<EvidenceUploadScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  bool get _gpsReady {
+    final parts = (_geo ?? '').split(',');
+    return parts.length >= 2 &&
+        parts[0].trim().isNotEmpty &&
+        parts[1].trim().isNotEmpty;
+  }
+
+  String? get _lat {
+    final parts = (_geo ?? '').split(',');
+    if (parts.isEmpty) return null;
+    final value = parts.first.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  String? get _lng {
+    final parts = (_geo ?? '').split(',');
+    if (parts.length < 2) return null;
+    final value = parts[1].trim();
+    return value.isEmpty ? null : value;
+  }
+
+  String _stampedName(String? name) {
+    final raw = (name ?? 'evidence.jpg').trim();
+    final lower = raw.toLowerCase();
+    if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp')) {
+      final dot = raw.lastIndexOf('.');
+      return '${raw.substring(0, dot)}_gps.png';
+    }
+    return '${raw}_gps.png';
+  }
+
+  Future<LocalPhoto> _stampPhoto(LocalPhoto photo) async {
+    final lat = _lat;
+    final lng = _lng;
+    if (lat == null || lng == null || photo.bytes == null || photo.bytes!.isEmpty) return photo;
+    final alreadyStamped = (photo.filename ?? '').toLowerCase().contains('_gps.');
+    if (alreadyStamped) return photo;
+    try {
+      final stampedBytes = await stampGpsOnPhoto(
+        photo.bytes!,
+        latitude: lat,
+        longitude: lng,
+        title: _selected?.activity ?? 'PED evidence',
+      );
+      return LocalPhoto(
+        photo.id,
+        bytes: stampedBytes,
+        filename: _stampedName(photo.filename),
+      );
+    } catch (_) {
+      return photo;
+    }
+  }
+
+  Future<void> _onAddPhoto(LocalPhoto photo) async {
+    if (!_gpsReady) {
+      _snack('Fetch your current GPS location first.');
+      return;
+    }
+    if (_photos.length >= 10) {
+      _snack('The server accepts 10 photos at a time.');
+      return;
+    }
+    final stamped = await _stampPhoto(photo);
+    if (!mounted) return;
+    setState(() => _photos.add(stamped));
+  }
+
   Future<void> _save() async {
     final selected = _selected;
     if (selected == null) {
       _snack('Select an activity.');
       return;
     }
-    final uploads = uploadPhotos(_photos);
-    if (uploads.isEmpty) {
+    if (!_gpsReady) {
+      _snack('Fetch your current GPS location.');
+      return;
+    }
+    if (_photos.isEmpty) {
       _snack('Add a photo from the camera or gallery.');
       return;
     }
-    if (uploads.length > 10) {
+    if (_photos.length > 10) {
       _snack('The server accepts 10 photos at a time.');
       return;
     }
@@ -133,6 +205,21 @@ class _EvidenceUploadScreenState extends State<EvidenceUploadScreen> {
     }
     setState(() => _saving = true);
     try {
+      final stamped = <LocalPhoto>[];
+      for (final photo in _photos) {
+        stamped.add(await _stampPhoto(photo));
+      }
+      if (!mounted) return;
+      setState(() {
+        _photos
+          ..clear()
+          ..addAll(stamped);
+      });
+      final uploads = uploadPhotos(stamped);
+      if (uploads.isEmpty) {
+        _snack('Add a photo from the camera or gallery.');
+        return;
+      }
       final geo = _geo ?? await currentGeoTag();
       final saved = await SupervisorApi().uploadEvidence(
         cnic: session.cnic,
@@ -224,14 +311,22 @@ class _EvidenceUploadScreenState extends State<EvidenceUploadScreen> {
                   onGetLocation: _locate,
                 ),
                 const SizedBox(height: 16),
-                PhotoUploader(
-                  title: 'Pictures',
-                  hint: 'Capture or upload',
-                  caption: 'jpg, jpeg, png or webp. Maximum 10.',
-                  maxPhotos: 10,
-                  photos: _photos,
-                  onAdd: (photo) => setState(() => _photos.add(photo)),
-                  onRemove: (id) => setState(() => _photos.removeWhere((photo) => photo.id == id)),
+                Opacity(
+                  opacity: _gpsReady ? 1 : 0.55,
+                  child: IgnorePointer(
+                    ignoring: !_gpsReady,
+                    child: PhotoUploader(
+                      title: 'Pictures',
+                      hint: 'Capture or upload',
+                      caption: _gpsReady
+                          ? 'Each photo is stamped with lat/long and place detail. Maximum 10.'
+                          : 'Fetch GPS first, then capture. Photos are stamped like tagging.',
+                      maxPhotos: 10,
+                      photos: _photos,
+                      onAdd: _onAddPhoto,
+                      onRemove: (id) => setState(() => _photos.removeWhere((photo) => photo.id == id)),
+                    ),
+                  ),
                 ),
               ],
             ),

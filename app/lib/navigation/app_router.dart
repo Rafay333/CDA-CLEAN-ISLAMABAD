@@ -26,15 +26,11 @@ import '../features/profile/profile_details_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/solid_waste/activity_screen.dart';
-import '../features/solid_waste/bulk_waste_screen.dart';
 import '../features/solid_waste/evidence_history_screen.dart';
 import '../features/solid_waste/evidence_upload_screen.dart';
-import '../features/solid_waste/primary_site_form_screen.dart';
-import '../features/solid_waste/primary_site_record_screen.dart';
 import '../features/solid_waste/record_details_screen.dart';
 import '../features/solid_waste/solid_waste_home_screen.dart';
 import '../features/solid_waste/tagging_screen.dart';
-import '../features/solid_waste/transfer_station_screen.dart';
 
 GoRouter createAppRouter() {
   return GoRouter(
@@ -141,28 +137,12 @@ GoRouter createAppRouter() {
         },
       ),
       GoRoute(
-        path: AppRoutes.primarySite,
-        builder: (context, state) => const PrimarySiteFormScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.primaryRecord,
-        builder: (context, state) => const PrimarySiteRecordScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.transferStation,
-        builder: (context, state) => const TransferStationScreen(),
-      ),
-      GoRoute(
         path: AppRoutes.wasteActivity,
         builder: (context, state) => const ActivityScreen(),
       ),
       GoRoute(
         path: AppRoutes.wasteTagging,
         builder: (context, state) => const TaggingScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.bulkWaste,
-        builder: (context, state) => const BulkWasteScreen(),
       ),
       GoRoute(
         path: AppRoutes.recordDetails,

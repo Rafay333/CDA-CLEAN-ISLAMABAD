@@ -403,9 +403,9 @@ class _TaggingScreenState extends State<TaggingScreen> {
                         const _InlineLoader(label: 'Loading primary sites…')
                       else
                         DropdownField(
-                          label: 'Primary Site',
+                          label: 'Site',
                           hint: _zoneDone
-                              ? (_sites.isEmpty ? 'No sites in this zone' : 'Select primary site')
+                              ? (_sites.isEmpty ? 'No sites in this zone' : 'Select site')
                               : 'Select zone first',
                           items: [for (final s in _sites) s.name],
                           value: _site?.name,
@@ -535,7 +535,7 @@ class _HeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Zone → primary site → container → live GPS → one photo.',
+                  'Zone → site → container → live GPS → one photo.',
                   style: AppType.caption.copyWith(
                     color: Colors.white.withValues(alpha: 0.88),
                     height: 1.4,

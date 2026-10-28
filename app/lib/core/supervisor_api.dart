@@ -562,6 +562,7 @@ class TaggingContainer {
     this.primarySiteId,
     this.primarySiteName,
     this.zoneCode,
+    this.containerType,
     this.latitude,
     this.longitude,
     this.siteLatitude,
@@ -576,6 +577,7 @@ class TaggingContainer {
   final int? primarySiteId;
   final String? primarySiteName;
   final String? zoneCode;
+  final String? containerType;
   final double? latitude;
   final double? longitude;
   final double? siteLatitude;
@@ -594,6 +596,7 @@ class TaggingContainer {
       primarySiteId: _int(json['primary_site_id']) == 0 ? null : _int(json['primary_site_id']),
       primarySiteName: _optional(json['primary_site_name']),
       zoneCode: _optional(json['zone_code']),
+      containerType: _optional(json['container_type'] ?? json['type'] ?? json['container_type_name']),
       latitude: _double(json['latitude']),
       longitude: _double(json['longitude']),
       siteLatitude: _double(json['site_latitude']),
@@ -622,14 +625,39 @@ class CatalogLocation {
   }
 }
 
+class CatalogVehicle {
+  const CatalogVehicle({
+    required this.number,
+    this.id,
+    this.vehicleType,
+    this.zoneCode,
+  });
+
+  final int? id;
+  final String number;
+  final String? vehicleType;
+  final String? zoneCode;
+
+  factory CatalogVehicle.fromJson(Map<String, dynamic> json) {
+    return CatalogVehicle(
+      id: _int(json['id'] ?? json['vehicle_id']) == 0 ? null : _int(json['id'] ?? json['vehicle_id']),
+      number: _text(
+        json['vehicle_number'] ?? json['number'] ?? json['plate'] ?? json['registration'] ?? json['name'],
+      ),
+      vehicleType: _optional(json['vehicle_type'] ?? json['type'] ?? json['vehicle_type_name']),
+      zoneCode: _optional(json['zone_code']),
+    );
+  }
+}
+
 class SupervisorCatalog {
   const SupervisorCatalog({
     this.zones = const [],
     this.ucs = const [],
     this.activities = const [],
     this.containerTypes = const [],
-    this.tcpNames = const [],
     this.vehicleTypes = const [],
+    this.vehicles = const [],
     this.primarySites = const [],
     this.locations = const [],
   });
@@ -638,8 +666,8 @@ class SupervisorCatalog {
   final List<CatalogUc> ucs;
   final List<CatalogActivity> activities;
   final List<String> containerTypes;
-  final List<String> tcpNames;
   final List<String> vehicleTypes;
+  final List<CatalogVehicle> vehicles;
   final List<CatalogSite> primarySites;
   final List<CatalogLocation> locations;
 
@@ -662,8 +690,8 @@ class SupervisorCatalog {
       ucs: rows(json['ucs'], CatalogUc.fromJson),
       activities: rows(json['activities'], CatalogActivity.fromJson),
       containerTypes: names(json['container_types']),
-      tcpNames: names(json['tcp_names']),
       vehicleTypes: names(json['vehicle_types']),
+      vehicles: rows(json['vehicles'], CatalogVehicle.fromJson),
       primarySites: rows(json['primary_sites'], CatalogSite.fromJson),
       locations: rows(json['locations'], CatalogLocation.fromJson),
     );
@@ -1241,6 +1269,48 @@ class SupervisorApi {
     return SupervisorCatalog.fromJson(data);
   }
 
+  /// Vehicles for the contractor (number + type). Empty list is valid.
+  Future<List<CatalogVehicle>> vehicles(String cnic, {String? zoneCode}) async {
+    final data = await _send(
+      dio.get(
+        '/api/supervisor/vehicles',
+        queryParameters: {
+          'supervisor_cnic': cnic,
+          if (zoneCode != null && zoneCode.isNotEmpty) 'zone_code': zoneCode,
+        },
+      ),
+    );
+    final rows = data is List
+        ? data
+        : (data is Map ? (data['items'] ?? data['vehicles'] ?? const []) : const []);
+    if (rows is! List) return const [];
+    return [
+      for (final item in rows)
+        if (item is Map) CatalogVehicle.fromJson(Map<String, dynamic>.from(item)),
+    ].where((item) => item.number.isNotEmpty).toList();
+  }
+
+  /// Containers for a zone (includes container_type for Activity auto-fill).
+  Future<List<TaggingContainer>> containers(String cnic, {String? zoneCode}) async {
+    final data = await _send(
+      dio.get(
+        '/api/supervisor/containers',
+        queryParameters: {
+          'supervisor_cnic': cnic,
+          if (zoneCode != null && zoneCode.isNotEmpty) 'zone_code': zoneCode,
+        },
+      ),
+    );
+    final rows = data is List
+        ? data
+        : (data is Map ? (data['items'] ?? data['containers'] ?? const []) : const []);
+    if (rows is! List) return const [];
+    return [
+      for (final item in rows)
+        if (item is Map) TaggingContainer.fromJson(Map<String, dynamic>.from(item)),
+    ].where((item) => item.containerName.isNotEmpty).toList();
+  }
+
   /// Preferred tagging picker: sites for Zone-4 / Zone-5 (omit zone for all).
   Future<List<TaggingPrimarySite>> primarySites(String cnic, {String? zoneCode}) async {
     final data = _map(
@@ -1336,14 +1406,16 @@ class SupervisorApi {
     String? vehicleType,
     String? vehicleNumber,
     String? containerActivity,
-    String? mode,
-    String? tcpName,
     String? activity,
     String? activityCode,
     String? zoneCode,
     String? tagging,
     String? containerType,
+    String? containerName,
     int? containerId,
+    int? vehicleId,
+    String? geoTag,
+    String? verifiedBy,
     List<UploadPhoto> before = const [],
     List<UploadPhoto> after = const [],
     List<UploadPhoto> bulk = const [],
@@ -1356,18 +1428,24 @@ class SupervisorApi {
     form.fields.add(MapEntry('date', (date == null || date.isEmpty) ? supervisorToday() : date));
     if (latitude != null && latitude.isNotEmpty) form.fields.add(MapEntry('latitude', latitude));
     if (longitude != null && longitude.isNotEmpty) form.fields.add(MapEntry('longitude', longitude));
+    if (geoTag != null && geoTag.isNotEmpty) form.fields.add(MapEntry('geo_tag', geoTag));
     if (remarks != null && remarks.trim().isNotEmpty) form.fields.add(MapEntry('remarks', remarks.trim()));
+    if (verifiedBy != null && verifiedBy.trim().isNotEmpty) {
+      form.fields.add(MapEntry('verified_by', verifiedBy.trim()));
+    }
     if (ucCode != null && ucCode.isNotEmpty) form.fields.add(MapEntry('uc_code', ucCode));
     if (primarySiteId != null) form.fields.add(MapEntry('primary_site_id', '$primarySiteId'));
     if (containerId != null) form.fields.add(MapEntry('container_id', '$containerId'));
+    if (containerName != null && containerName.isNotEmpty) {
+      form.fields.add(MapEntry('container_name', containerName));
+    }
     if (locationId != null) form.fields.add(MapEntry('location_id', '$locationId'));
+    if (vehicleId != null) form.fields.add(MapEntry('vehicle_id', '$vehicleId'));
     if (vehicleType != null && vehicleType.isNotEmpty) form.fields.add(MapEntry('vehicle_type', vehicleType));
     if (vehicleNumber != null && vehicleNumber.isNotEmpty) form.fields.add(MapEntry('vehicle_number', vehicleNumber));
     if (containerActivity != null && containerActivity.isNotEmpty) {
       form.fields.add(MapEntry('container_activity', containerActivity));
     }
-    if (mode != null && mode.isNotEmpty) form.fields.add(MapEntry('mode', mode));
-    if (tcpName != null && tcpName.isNotEmpty) form.fields.add(MapEntry('tcp_name', tcpName));
     if (activity != null && activity.isNotEmpty) form.fields.add(MapEntry('activity', activity));
     if (activityCode != null && activityCode.isNotEmpty) form.fields.add(MapEntry('activity_code', activityCode));
     if (zoneCode != null && zoneCode.isNotEmpty) form.fields.add(MapEntry('zone_code', zoneCode));
