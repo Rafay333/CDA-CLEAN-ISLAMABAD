@@ -64,17 +64,25 @@ class RecordDetailsScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            _PhotoStrip(
-              title: 'Before',
-              photos: waste.beforePhotos,
-              emptyLabel: 'No before picture',
-            ),
-            const SizedBox(height: 12),
-            _PhotoStrip(
-              title: 'After',
-              photos: waste.afterPhotos,
-              emptyLabel: 'No after picture',
-            ),
+            if (waste.afterPhotos.isEmpty) ...[
+              _PhotoStrip(
+                title: 'Pictures',
+                photos: waste.beforePhotos,
+                emptyLabel: 'No picture',
+              ),
+            ] else ...[
+              _PhotoStrip(
+                title: 'Before',
+                photos: waste.beforePhotos,
+                emptyLabel: 'No before picture',
+              ),
+              const SizedBox(height: 12),
+              _PhotoStrip(
+                title: 'After',
+                photos: waste.afterPhotos,
+                emptyLabel: 'No after picture',
+              ),
+            ],
           ],
           if (waste.kind == WasteKind.tagging) ...[
             const SizedBox(height: 8),

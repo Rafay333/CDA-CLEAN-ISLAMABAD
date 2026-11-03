@@ -36,8 +36,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   static const _maxBeforePhotos = 2;
   static const _maxAfterPhotos = 2;
+  static const _maxPlainPhotos = 2;
   static const _containerActivityCode = 'containers';
   static const _containerActivityName = 'Container Collection/Clearance';
+  static const _transferActivityCode = 'tcp';
+  static const _transferActivityName = 'Transfer Station Management';
+  static const _bulkActivityCode = 'bulk';
+  static const _bulkActivityName = 'Bulk Waste Collection';
+
+  /// Inventory sizes only (same as portal / old Activity save). Not Open/Skip.
+  static const _inventorySize1_1 = '1.1 m3';
+  static const _inventorySize8 = '8 m3';
 
   late final TextEditingController _remarks;
 
@@ -74,16 +83,33 @@ class _ActivityScreenState extends State<ActivityScreen> {
   bool get _gpsReady =>
       (_lat?.trim().isNotEmpty ?? false) && (_lng?.trim().isNotEmpty ?? false);
 
-  /// Only this activity keeps container + vehicle fields.
+  bool _matchesActivity(CatalogActivity selected, String code, String name) {
+    return selected.code == code || selected.name == name;
+  }
+
+  /// Container Collection/Clearance — container + vehicle + before/after.
   bool get _isContainerFlow {
     final selected = _selectedActivity();
     if (selected == null) return false;
-    return selected.code == _containerActivityCode ||
-        selected.name == _containerActivityName;
+    return _matchesActivity(selected, _containerActivityCode, _containerActivityName);
   }
 
-  /// Container flow needs container + vehicle. Other activities only need a zone
-  /// (UC is optional).
+  /// Transfer Station + Bulk Waste — before/after (no container/vehicle).
+  bool get _isTransferOrBulkFlow {
+    final selected = _selectedActivity();
+    if (selected == null) return false;
+    return _matchesActivity(selected, _transferActivityCode, _transferActivityName) ||
+        _matchesActivity(selected, _bulkActivityCode, _bulkActivityName);
+  }
+
+  /// The three activities that keep before + after pictures.
+  bool get _isBeforeAfterFlow => _isContainerFlow || _isTransferOrBulkFlow;
+
+  /// All remaining activities — zone, optional UC, GPS, 1–2 photos, remarks.
+  bool get _isPhotosOnlyFlow =>
+      _selectedActivity() != null && !_isBeforeAfterFlow;
+
+  /// Container flow needs container + vehicle. Others only need a zone (UC optional).
   bool get _detailsReady =>
       _isContainerFlow ? (_container != null && _vehicle != null) : _zone != null;
 
@@ -165,6 +191,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   void _onActivity(String value) {
     setState(() {
+      _step = _ActivityStep.before;
       _activity = value;
       _zone = null;
       _uc = null;
@@ -173,8 +200,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _vehicle = null;
       _vehicleType = null;
       _beforePhotos.clear();
+      _afterPhotos.clear();
       _containers = const [];
       _error = null;
+      _remarks.clear();
     });
   }
 
@@ -331,6 +360,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   void _goToAfter() {
+    if (!_isBeforeAfterFlow) {
+      _submitPhotosOnly();
+      return;
+    }
     final selected = _selectedActivity();
     if (selected == null) {
       _snack('Select an activity.');
@@ -451,13 +484,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _snack('Fetch your current GPS location first.');
       return;
     }
-    if (_beforePhotos.length >= _maxBeforePhotos) {
-      _snack('You can add up to $_maxBeforePhotos before pictures.');
+    final max = _isPhotosOnlyFlow ? _maxPlainPhotos : _maxBeforePhotos;
+    if (_beforePhotos.length >= max) {
+      _snack('You can add up to $max pictures.');
       return;
     }
     final stamped = await _stampPhoto(
       photo,
-      _selectedActivity()?.name ?? _container?.containerName ?? 'Activity before',
+      _selectedActivity()?.name ?? _container?.containerName ?? 'Activity photo',
     );
     if (!mounted) return;
     setState(() => _beforePhotos.add(stamped));
@@ -480,7 +514,41 @@ class _ActivityScreenState extends State<ActivityScreen> {
     setState(() => _afterPhotos.add(stamped));
   }
 
+  Future<void> _submitPhotosOnly() async {
+    final selected = _selectedActivity();
+    if (selected == null) {
+      _snack('Select an activity.');
+      return;
+    }
+    if (_zone == null || _zone!.isEmpty) {
+      _snack('Select a zone.');
+      return;
+    }
+    if (!_gpsReady) {
+      _snack('Fetch your current GPS location.');
+      return;
+    }
+    if (uploadPhotos(_beforePhotos).isEmpty) {
+      _snack('Add at least one picture.');
+      return;
+    }
+    if (_beforePhotos.length > _maxPlainPhotos) {
+      _snack('You can add up to $_maxPlainPhotos pictures.');
+      return;
+    }
+    await _saveActivity(
+      selected: selected,
+      before: _beforePhotos,
+      after: const [],
+      photosOnly: true,
+    );
+  }
+
   Future<void> _submit() async {
+    if (_isPhotosOnlyFlow) {
+      await _submitPhotosOnly();
+      return;
+    }
     final selected = _selectedActivity();
     final containerOk = !_isContainerFlow ||
         (_container != null &&
@@ -508,6 +576,20 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _snack('You can add up to $_maxAfterPhotos after pictures.');
       return;
     }
+    await _saveActivity(
+      selected: selected,
+      before: _beforePhotos,
+      after: _afterPhotos,
+      photosOnly: false,
+    );
+  }
+
+  Future<void> _saveActivity({
+    required CatalogActivity selected,
+    required List<LocalPhoto> before,
+    required List<LocalPhoto> after,
+    required bool photosOnly,
+  }) async {
     final session = AppStateScope.read(context).session;
     if (session == null) {
       _snack('Sign in again.');
@@ -517,11 +599,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
     setState(() => _submitting = true);
     try {
       final stampedBefore = <LocalPhoto>[];
-      for (final photo in _beforePhotos) {
+      for (final photo in before) {
         stampedBefore.add(await _stampPhoto(photo, selected.name));
       }
       final stampedAfter = <LocalPhoto>[];
-      for (final photo in _afterPhotos) {
+      for (final photo in after) {
         stampedAfter.add(await _stampPhoto(photo, selected.name));
       }
       if (!mounted) return;
@@ -536,8 +618,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
       final beforeUploads = uploadPhotos(stampedBefore);
       final afterUploads = uploadPhotos(stampedAfter);
-      if (beforeUploads.isEmpty || afterUploads.isEmpty) {
-        _snack('Before and after pictures are required.');
+      if (beforeUploads.isEmpty) {
+        _snack(photosOnly ? 'Add at least one picture.' : 'Before pictures are required.');
+        return;
+      }
+      if (!photosOnly && afterUploads.isEmpty) {
+        _snack('After pictures are required.');
         return;
       }
 
@@ -598,7 +684,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
       if (!mounted) return;
       final msg = error.message.trim();
       final lower = msg.toLowerCase();
-      // Live API still requires container for every activity until dual-flow is deployed.
       if (!_isContainerFlow &&
           (lower.contains('container_id') || lower.contains('container is required'))) {
         _snack(
@@ -615,7 +700,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_step == _ActivityStep.after) return _buildAfterStep();
+    if (_isBeforeAfterFlow && _step == _ActivityStep.after) {
+      return _buildAfterStep();
+    }
     return _buildBeforeStep();
   }
 
@@ -626,6 +713,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final vehicleTypeValue = (_vehicleType == null || _vehicleType!.isEmpty)
         ? (_resolvingVehicleType ? 'Fetching…' : '—')
         : _vehicleType!;
+    final photosOnly = _isPhotosOnlyFlow;
+    final heroSubtitle = _isContainerFlow
+        ? 'Container activity: zone, container, vehicle, GPS and before photos.'
+        : (_isTransferOrBulkFlow
+            ? 'Select activity and zone (UC optional), then capture GPS-stamped before photos.'
+            : 'Zone, optional UC, live GPS, 1–2 photos and remarks.');
 
     return AppPage(
       title: 'Activity',
@@ -642,8 +735,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ),
       ],
       bottom: PrimaryButton(
-        label: 'Save & continue',
-        onPressed: _loadingCatalog ? null : _goToAfter,
+        label: photosOnly ? 'Submit' : 'Save & continue',
+        loading: photosOnly && _submitting,
+        onPressed: _loadingCatalog || (photosOnly && _submitting) ? null : _goToAfter,
       ),
       body: _loadingCatalog
           ? const Padding(
@@ -655,9 +749,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
               children: [
                 _HeroCard(
                   title: 'Activity record',
-                  subtitle: _isContainerFlow
-                      ? 'Container activity: zone, container, vehicle, GPS and before photos.'
-                      : 'Select activity and zone (UC optional), then capture GPS-stamped before photos.',
+                  subtitle: heroSubtitle,
                   icon: Icons.assignment_outlined,
                 ),
                 if (_error != null) ...[
@@ -756,7 +848,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Live location',
-                  subtitle: 'GPS is stamped on the before picture (same as after).',
+                  subtitle: photosOnly
+                      ? 'GPS is stamped on each picture.'
+                      : 'GPS is stamped on the before picture (same as after).',
                   child: LocationCard(
                     latitude: _lat,
                     longitude: _lng,
@@ -766,23 +860,27 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ),
                 const SizedBox(height: 14),
                 _SectionCard(
-                  title: 'Before pictures',
-                  subtitle: 'Up to $_maxBeforePhotos GPS-stamped photos before the activity.',
+                  title: photosOnly ? 'Pictures' : 'Before pictures',
+                  subtitle: photosOnly
+                      ? 'At least 1, up to $_maxPlainPhotos GPS-stamped photos.'
+                      : 'Up to $_maxBeforePhotos GPS-stamped photos before the activity.',
                   child: Opacity(
                     opacity: !_detailsReady || !_gpsReady ? 0.55 : 1,
                     child: IgnorePointer(
                       ignoring: !_detailsReady || !_gpsReady,
                       child: PhotoUploader(
-                        title: 'Before',
-                        hint: 'Take before photo',
+                        title: photosOnly ? 'Photos' : 'Before',
+                        hint: photosOnly ? 'Take photo' : 'Take before photo',
                         caption: !_detailsReady
                             ? (_isContainerFlow
                                 ? 'Select container and vehicle first.'
                                 : 'Select a zone first.')
                             : (_gpsReady
-                                ? 'Up to $_maxBeforePhotos photos. Each is stamped with lat/long.'
-                                : 'Fetch GPS first, then add before pictures.'),
-                        maxPhotos: _maxBeforePhotos,
+                                ? (photosOnly
+                                    ? 'Up to $_maxPlainPhotos photos. Each is stamped with lat/long.'
+                                    : 'Up to $_maxBeforePhotos photos. Each is stamped with lat/long.')
+                                : 'Fetch GPS first, then add pictures.'),
+                        maxPhotos: photosOnly ? _maxPlainPhotos : _maxBeforePhotos,
                         photos: _beforePhotos,
                         onAdd: _onBeforePhoto,
                         onRemove: (id) => setState(
@@ -792,6 +890,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     ),
                   ),
                 ),
+                if (photosOnly) ...[
+                  const SizedBox(height: 14),
+                  _SectionCard(
+                    title: 'Remarks',
+                    subtitle: 'Optional notes for this activity.',
+                    child: TextInput(
+                      label: 'Remarks',
+                      controller: _remarks,
+                      hint: 'Add remarks',
+                      maxLines: 4,
+                    ),
+                  ),
+                ],
               ],
             ),
     );

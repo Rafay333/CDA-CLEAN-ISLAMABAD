@@ -12,7 +12,7 @@ import '../../theme/app_typography.dart';
 import '../../utils/gps_photo_stamp.dart';
 import 'waste_catalog.dart';
 
-/// Zone → Primary site → Container → GPS + 1 photo (no UC gate).
+/// Zone → Site → auto type → Container (if any) → GPS + 1 photo (no UC gate).
 class TaggingScreen extends StatefulWidget {
   const TaggingScreen({super.key});
 
@@ -30,7 +30,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
   LocalPhoto? _photo;
 
   List<String> _zones = const [];
-  List<String> _types = const [];
+  List<String> _types = WasteCatalog.inventoryContainerTypes;
   List<TaggingPrimarySite> _sites = const [];
   List<TaggingContainer> _containers = const [];
 
@@ -43,13 +43,31 @@ class _TaggingScreenState extends State<TaggingScreen> {
 
   bool get _zoneDone => _zone != null && _zone!.isNotEmpty;
   bool get _typeDone => _containerType != null && _containerType!.isNotEmpty;
+  /// Compulsory: only 1.1 m3 / 8 m3 count as selected.
+  bool get _typeValid => _normalizedContainerType(_containerType) != null;
   bool get _siteDone => _site != null;
   bool get _containerDone => _container != null;
+  /// Site with no child inventory rows → tag the primary site itself (old way).
+  bool get _siteOnlyMode =>
+      _siteDone && !_loadingContainers && _containers.isEmpty && _container == null;
+  bool get _targetReady => _containerDone || _siteOnlyMode;
   bool get _gpsDone =>
       (_deviceLat?.trim().isNotEmpty ?? false) && (_deviceLng?.trim().isNotEmpty ?? false);
+  bool get _canSubmit =>
+      !_saving &&
+      !_loadingCatalog &&
+      _typeValid &&
+      _zoneDone &&
+      _siteDone &&
+      _targetReady &&
+      _gpsDone &&
+      _photo != null &&
+      (_photo!.bytes?.isNotEmpty ?? false);
 
   double? get _pinLat => _container?.displayLat ?? _site?.latitude;
   double? get _pinLng => _container?.displayLng ?? _site?.longitude;
+  String get _targetLabel =>
+      _container?.containerName ?? _site?.name ?? 'Container';
 
   @override
   void initState() {
@@ -70,24 +88,50 @@ class _TaggingScreenState extends State<TaggingScreen> {
         for (final z in WasteCatalog.zones)
           if (z == 'Zone-4' || z == 'Zone-5') z,
       ];
+      // Old way: only two sizes — 1.1 m3 | 8 m3.
+      final types = WasteCatalog.taggingContainerTypes;
       setState(() {
         _zones = zones.isEmpty ? const ['Zone-4', 'Zone-5'] : zones;
-        _types = WasteCatalog.containerTypes;
+        _types = types.isEmpty ? WasteCatalog.inventoryContainerTypes : types;
+        if (_normalizedContainerType(_containerType) == null) {
+          _containerType = null;
+        }
         _loadingCatalog = false;
       });
     } on SupervisorException catch (e) {
       if (!mounted) return;
       setState(() {
+        _types = WasteCatalog.inventoryContainerTypes;
         _loadingCatalog = false;
         _error = e.message;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _types = WasteCatalog.inventoryContainerTypes;
         _loadingCatalog = false;
         _error = 'Could not load catalog.';
       });
     }
+  }
+
+  String? _normalizedContainerType(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    final lower = value.toLowerCase().replaceAll(' ', '');
+    if (lower.contains('1.1') || lower == '1.1m3' || lower == '1,1m3') {
+      return '1.1 m3';
+    }
+    if (lower.contains('8m3') || lower == '8' || RegExp(r'(^|[^0-9.])8(\s*)m').hasMatch(lower)) {
+      return '8 m3';
+    }
+    for (final allowed in _types) {
+      if (allowed.toLowerCase() == value.toLowerCase()) return allowed;
+    }
+    for (final allowed in WasteCatalog.inventoryContainerTypes) {
+      if (allowed.toLowerCase() == value.toLowerCase()) return allowed;
+    }
+    return null;
   }
 
   void _snack(String message) {
@@ -114,6 +158,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
       _zone = value;
       _site = null;
       _container = null;
+      _containerType = null;
       _deviceLat = null;
       _deviceLng = null;
       _photo = null;
@@ -128,13 +173,23 @@ class _TaggingScreenState extends State<TaggingScreen> {
       return;
     }
     try {
-      final rows = await SupervisorApi().primarySites(session.cnic, zoneCode: value);
+      final rows = await SupervisorApi().primarySites(
+        session.cnic,
+        zoneCode: value,
+        purpose: 'tagging',
+      );
+      // Only sites that still have untagged work (IsTagged = 0), or no inventory yet.
+      final open = [for (final s in rows) if (s.needsTagging) s];
       if (!mounted) return;
       setState(() {
-        _sites = rows;
+        _sites = open;
         _loadingSites = false;
       });
-      if (rows.isEmpty) _snack('No primary sites for $value.');
+      if (open.isEmpty) {
+        _snack(rows.isEmpty
+            ? 'No primary sites for $value.'
+            : 'All containers in $value are already tagged.');
+      }
     } on SupervisorException catch (e) {
       if (!mounted) return;
       setState(() => _loadingSites = false);
@@ -142,15 +197,28 @@ class _TaggingScreenState extends State<TaggingScreen> {
     }
   }
 
-  Future<void> _onSite(String name) async {
-    TaggingPrimarySite? selected;
-    for (final s in _sites) {
-      if (s.name == name) selected = s;
+  /// Prefer type from a picked container, else first valid type under the site.
+  String? _typeFromContainers(List<TaggingContainer> rows, {TaggingContainer? prefer}) {
+    final fromPrefer = _normalizedContainerType(prefer?.containerType);
+    if (fromPrefer != null) return fromPrefer;
+    for (final c in rows) {
+      final t = _normalizedContainerType(c.containerType);
+      if (t != null) return t;
     }
-    if (selected == null) return;
+    return null;
+  }
+
+  Future<void> _onSite(String name) async {
+    TaggingPrimarySite? matched;
+    for (final s in _sites) {
+      if (s.name == name) matched = s;
+    }
+    if (matched == null) return;
+    final site = matched;
     setState(() {
-      _site = selected;
+      _site = site;
       _container = null;
+      _containerType = null;
       _deviceLat = null;
       _deviceLng = null;
       _photo = null;
@@ -164,16 +232,78 @@ class _TaggingScreenState extends State<TaggingScreen> {
       return;
     }
     try {
-      final result = await SupervisorApi().containersForPrimarySite(session.cnic, selected.id);
+      final api = SupervisorApi();
+      final result = await api.containersForPrimarySite(
+        session.cnic,
+        site.id,
+        purpose: 'tagging',
+      );
+      if (!mounted) return;
+      final all = result.items;
+      // Tagging picker: only IsTagged = 0 (hide already tagged).
+      final items = [for (final c in all) if (!c.isTagged) c];
+      if (all.isNotEmpty && items.isEmpty) {
+        setState(() {
+          _containers = const [];
+          _container = null;
+          _containerType = null;
+          _loadingContainers = false;
+          _site = null;
+        });
+        _snack('All containers at this site are already tagged.');
+        return;
+      }
+      // One inventory row → auto-select it; type comes from Containers.ContainerType.
+      var autoContainer = items.length == 1 ? items.first : null;
+      var autoType = _typeFromContainers(items, prefer: autoContainer);
+      if (autoType == null && autoContainer != null) {
+        try {
+          final detail = await api.containerDetail(session.cnic, autoContainer.containerId);
+          if (detail.isTagged) {
+            if (!mounted) return;
+            setState(() {
+              _containers = const [];
+              _container = null;
+              _containerType = null;
+              _loadingContainers = false;
+              _site = null;
+            });
+            _snack('This container is already tagged.');
+            return;
+          }
+          autoType = _normalizedContainerType(detail.containerType);
+          autoContainer = TaggingContainer(
+            containerId: detail.containerId,
+            containerName: detail.containerName,
+            primarySiteId: detail.primarySiteId ?? site.id,
+            primarySiteName: detail.primarySiteName ?? site.name,
+            zoneCode: detail.zoneCode ?? site.zoneCode,
+            containerType: detail.containerType ?? autoContainer.containerType,
+            latitude: detail.latitude,
+            longitude: detail.longitude,
+            siteLatitude: detail.siteLatitude ?? site.latitude,
+            siteLongitude: detail.siteLongitude ?? site.longitude,
+            tagStatus: detail.tagStatus,
+            isTagged: detail.isTagged,
+            taggingDate: detail.taggingDate,
+          );
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
-        _containers = result.items;
+        _containers = items;
+        _container = autoContainer;
+        // Prefer type from Containers under the site; fall back to site list field.
+        _containerType =
+            autoType ?? _normalizedContainerType(site.containerType);
         _loadingContainers = false;
       });
-      if (result.items.isEmpty) _snack('No containers at this primary site.');
     } on SupervisorException catch (e) {
       if (!mounted) return;
-      setState(() => _loadingContainers = false);
+      setState(() {
+        _containerType = null;
+        _loadingContainers = false;
+      });
       _snack(e.message);
     }
   }
@@ -185,6 +315,9 @@ class _TaggingScreenState extends State<TaggingScreen> {
     }
     setState(() {
       _container = selected;
+      // Auto-fetch type from the selected container (same as Activity).
+      final fromContainer = _normalizedContainerType(selected?.containerType);
+      if (fromContainer != null) _containerType = fromContainer;
       _deviceLat = null;
       _deviceLng = null;
       _photo = null;
@@ -211,7 +344,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
         photo.bytes!,
         latitude: _deviceLat!,
         longitude: _deviceLng!,
-        title: _container?.containerName ?? 'Container tagging',
+        title: _targetLabel,
       );
       if (!mounted) return;
       setState(() {
@@ -228,8 +361,12 @@ class _TaggingScreenState extends State<TaggingScreen> {
   }
 
   Future<void> _locate() async {
-    if (!_containerDone) {
-      _snack('Select zone, site and container first.');
+    if (!_targetReady) {
+      _snack(
+        _containers.isEmpty
+            ? 'Select zone and site first.'
+            : 'Select zone, site and container first.',
+      );
       return;
     }
     setState(() => _locating = true);
@@ -259,15 +396,18 @@ class _TaggingScreenState extends State<TaggingScreen> {
       _snack('Select a zone.');
       return;
     }
-    if (!_typeDone) {
-      _snack('Select the container type.');
+    // Container type is compulsory — never submit without 1.1 m3 / 8 m3.
+    final taggingType = _normalizedContainerType(_containerType);
+    if (!_typeDone || taggingType == null) {
+      _snack('Container type is required. Select 1.1 m3 or 8 m3.');
+      setState(() => _containerType = null);
       return;
     }
     if (!_siteDone) {
       _snack('Select a primary site.');
       return;
     }
-    if (!_containerDone) {
+    if (!_siteOnlyMode && !_containerDone) {
       _snack('Select a container.');
       return;
     }
@@ -284,7 +424,10 @@ class _TaggingScreenState extends State<TaggingScreen> {
       _snack('Sign in again.');
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _containerType = taggingType;
+    });
     try {
       // Ensure GPS is burned into the image (same idea as attendance stamped photos).
       var upload = _photo!;
@@ -294,7 +437,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
           upload.bytes!,
           latitude: _deviceLat!,
           longitude: _deviceLng!,
-          title: _container?.containerName ?? 'Container tagging',
+          title: _targetLabel,
         );
         upload = LocalPhoto(
           upload.id,
@@ -307,9 +450,11 @@ class _TaggingScreenState extends State<TaggingScreen> {
         cnic: session.cnic,
         kind: 'tagging',
         tagging: WasteCatalog.containerTagging,
-        containerType: _containerType,
+        containerType: taggingType,
         primarySiteId: _site!.id,
-        containerId: _container!.containerId,
+        // Optional: only send when inventory container rows exist under the site.
+        containerId: _container?.containerId,
+        containerName: _targetLabel,
         zoneCode: _zone,
         latitude: _deviceLat,
         longitude: _deviceLng,
@@ -320,11 +465,11 @@ class _TaggingScreenState extends State<TaggingScreen> {
         draft.reset();
         draft.kind = WasteKind.tagging;
         draft.zone = _zone;
-        draft.containerType = _containerType;
+        draft.containerType = taggingType;
         draft.primarySite = _site!.name;
         draft.primarySiteId = _site!.id;
-        draft.containerId = _container!.containerId;
-        draft.containerName = _container!.containerName;
+        draft.containerId = _container?.containerId;
+        draft.containerName = _targetLabel;
         draft.latitude = _deviceLat;
         draft.longitude = _deviceLng;
         draft.recordId = saved.id;
@@ -362,7 +507,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
       bottom: PrimaryButton(
         label: 'Save Tag',
         loading: _saving,
-        onPressed: _saving || _loadingCatalog ? null : _save,
+        onPressed: _canSubmit ? _save : null,
       ),
       body: _loadingCatalog
           ? const Padding(
@@ -380,7 +525,8 @@ class _TaggingScreenState extends State<TaggingScreen> {
                 const SizedBox(height: 18),
                 _SectionCard(
                   title: 'Selection',
-                  subtitle: 'Zone and type first — UC is not required.',
+                  subtitle:
+                      'Zone → site → type auto-fills from that site (1.1 m3 / 8 m3). UC not required.',
                   child: Column(
                     children: [
                       DropdownField(
@@ -391,42 +537,57 @@ class _TaggingScreenState extends State<TaggingScreen> {
                         onChanged: _onZone,
                       ),
                       const SizedBox(height: 14),
-                      DropdownField(
-                        label: 'Container Type',
-                        hint: 'Select container type',
-                        items: _types,
-                        value: _containerType,
-                        onChanged: (value) => setState(() => _containerType = value),
-                      ),
-                      const SizedBox(height: 14),
                       if (_loadingSites)
                         const _InlineLoader(label: 'Loading primary sites…')
                       else
                         DropdownField(
                           label: 'Site',
-                          hint: _zoneDone
-                              ? (_sites.isEmpty ? 'No sites in this zone' : 'Select site')
-                              : 'Select zone first',
+                          hint: !_zoneDone
+                              ? 'Select zone first'
+                              : (_sites.isEmpty ? 'No sites in this zone' : 'Select site'),
                           items: [for (final s in _sites) s.name],
                           value: _site?.name,
-                          enabled: _zoneDone && _sites.isNotEmpty,
+                          enabled: _zoneDone && _sites.isNotEmpty && !_saving,
                           onChanged: _onSite,
                         ),
                       const SizedBox(height: 14),
                       if (_loadingContainers)
-                        const _InlineLoader(label: 'Loading containers…')
+                        const _InlineLoader(label: 'Loading container type…')
                       else
                         DropdownField(
+                          label: 'Container Type *',
+                          hint: !_siteDone
+                              ? 'Select site first'
+                              : (_typeValid
+                                  ? 'Auto from site — change if needed'
+                                  : 'Required — select 1.1 m3 or 8 m3'),
+                          items: _types.isEmpty
+                              ? WasteCatalog.inventoryContainerTypes
+                              : _types,
+                          value: _containerType,
+                          enabled: _siteDone && !_saving,
+                          errorText: _siteDone && _typeDone && !_typeValid
+                              ? 'Select 1.1 m3 or 8 m3'
+                              : null,
+                          onChanged: (value) => setState(() => _containerType = value),
+                        ),
+                      const SizedBox(height: 14),
+                      if (_loadingContainers)
+                        const SizedBox.shrink()
+                      else if (_containers.isNotEmpty)
+                        DropdownField(
                           label: 'Container',
-                          hint: _siteDone
-                              ? (_containers.isEmpty
-                                  ? 'No containers at this site'
-                                  : 'Select container')
-                              : 'Select primary site first',
+                          hint: 'Select container',
                           items: [for (final c in _containers) c.containerName],
                           value: _container?.containerName,
-                          enabled: _siteDone && _containers.isNotEmpty,
+                          enabled: _siteDone && !_saving,
                           onChanged: _onContainer,
+                        )
+                      else if (_siteDone)
+                        const InlineMessage(
+                          tone: InlineTone.info,
+                          message:
+                              'No inventory containers under this site — tagging will use the primary site itself. Pick type if it did not auto-fill.',
                         ),
                     ],
                   ),
@@ -439,15 +600,22 @@ class _TaggingScreenState extends State<TaggingScreen> {
                     pinLat: _pinLat,
                     pinLng: _pinLng,
                   ),
+                ] else if (_siteOnlyMode && _site != null) ...[
+                  const SizedBox(height: 14),
+                  _SiteSummaryCard(
+                    site: _site!,
+                    pinLat: _pinLat,
+                    pinLng: _pinLng,
+                  ),
                 ],
                 const SizedBox(height: 14),
                 _SectionCard(
                   title: 'Live GPS',
                   subtitle: 'Device location is saved as the tagged position.',
                   child: Opacity(
-                    opacity: _containerDone ? 1 : 0.55,
+                    opacity: _targetReady ? 1 : 0.55,
                     child: IgnorePointer(
-                      ignoring: !_containerDone,
+                      ignoring: !_targetReady,
                       child: LocationCard(
                         latitude: _deviceLat,
                         longitude: _deviceLng,
@@ -535,7 +703,7 @@ class _HeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Zone → site → container → live GPS → one photo.',
+                  'Zone → site → type auto-fills → GPS → one photo.',
                   style: AppType.caption.copyWith(
                     color: Colors.white.withValues(alpha: 0.88),
                     height: 1.4,
@@ -703,6 +871,99 @@ class _ContainerSummaryCard extends StatelessWidget {
             Text(
               'Last tagged: ${container.taggingDate}',
               style: AppType.caption,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SiteSummaryCard extends StatelessWidget {
+  const _SiteSummaryCard({
+    required this.site,
+    this.pinLat,
+    this.pinLng,
+  });
+
+  final TaggingPrimarySite site;
+  final double? pinLat;
+  final double? pinLng;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDFA),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: const Color(0xFFC7E8D9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(site.name, style: AppType.section.copyWith(fontSize: 15)),
+          const SizedBox(height: 6),
+          Text(
+            'Primary site (no child containers)',
+            style: AppType.caption,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniCoord(
+                  label: 'Stored lat',
+                  value: pinLat?.toStringAsFixed(6),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MiniCoord(
+                  label: 'Stored lng',
+                  value: pinLng?.toStringAsFixed(6),
+                ),
+              ),
+            ],
+          ),
+          if (pinLat != null && pinLng != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 160,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(pinLat!, pinLng!),
+                    initialZoom: 16,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                    ),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'pk.gov.cda.cda_clean_islamabad',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(pinLat!, pinLng!),
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.bottomCenter,
+                          child: const Icon(
+                            Icons.location_on_rounded,
+                            color: AppColors.emerald,
+                            size: 36,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ],

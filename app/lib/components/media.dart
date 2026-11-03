@@ -117,7 +117,7 @@ class PhotoUploader extends StatelessWidget {
         return SheetScaffold(
           title: title,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -125,27 +125,34 @@ class PhotoUploader extends StatelessWidget {
                   onPressed: () => Navigator.of(context).pop(ImageSource.camera),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.emerald,
-                    minimumSize: const Size.fromHeight(48),
+                    minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                   icon: const Icon(Icons.photo_camera_outlined),
-                  label: Text('Take Picture', style: AppType.button.copyWith(color: AppColors.white)),
+                  label: Text(
+                    'Take Picture',
+                    style: AppType.button.copyWith(color: AppColors.white),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
+                const SizedBox(height: 12),
+                // Keep gallery as a filled secondary action so it stays visible
+                // on short screens / gesture-nav phones (was often clipped).
+                FilledButton.icon(
                   onPressed: () => Navigator.of(context).pop(ImageSource.gallery),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.navy,
-                    minimumSize: const Size.fromHeight(48),
-                    side: const BorderSide(color: AppColors.border),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.navy,
+                    minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Choose from Gallery'),
+                  label: Text(
+                    'Choose from Gallery',
+                    style: AppType.button.copyWith(color: AppColors.white),
+                  ),
                 ),
               ],
             ),
@@ -163,7 +170,7 @@ class PhotoUploader extends StatelessWidget {
           return SheetScaffold(
             title: 'Select camera',
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -171,27 +178,32 @@ class PhotoUploader extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(CameraDevice.rear),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.emerald,
-                      minimumSize: const Size.fromHeight(48),
+                      minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                     ),
                     icon: const Icon(Icons.camera_rear_outlined),
-                    label: Text('Back camera', style: AppType.button.copyWith(color: AppColors.white)),
+                    label: Text(
+                      'Back camera',
+                      style: AppType.button.copyWith(color: AppColors.white),
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
                     onPressed: () => Navigator.of(context).pop(CameraDevice.front),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.navy,
-                      minimumSize: const Size.fromHeight(48),
-                      side: const BorderSide(color: AppColors.border),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.navy,
+                      minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                     ),
                     icon: const Icon(Icons.camera_front_outlined),
-                    label: const Text('Front camera'),
+                    label: Text(
+                      'Front camera',
+                      style: AppType.button.copyWith(color: AppColors.white),
+                    ),
                   ),
                 ],
               ),
@@ -208,6 +220,7 @@ class PhotoUploader extends StatelessWidget {
         preferredCameraDevice: cameraDevice ?? CameraDevice.rear,
         imageQuality: 70,
         maxWidth: 1600,
+        requestFullMetadata: false,
       );
       if (file == null || !context.mounted) return;
       final bytes = await file.readAsBytes();
@@ -222,7 +235,13 @@ class PhotoUploader extends StatelessWidget {
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The photo could not be opened.')),
+        SnackBar(
+          content: Text(
+            source == ImageSource.gallery
+                ? 'Could not open gallery. Allow photos access in Settings, then try again.'
+                : 'The photo could not be opened.',
+          ),
+        ),
       );
     }
   }

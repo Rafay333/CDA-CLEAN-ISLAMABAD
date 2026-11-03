@@ -10,6 +10,15 @@ class WasteCatalog {
   static const containerTagging = 'Tagging of Containers';
   static const picturesPerUc = 2;
 
+  /// Tagging + Activity inventory sizes (old 2-option list).
+  static const inventoryContainerTypes = <String>[
+    '1.1 m3',
+    '8 m3',
+  ];
+
+  /// Alias used by tagging screen.
+  static const defaultTaggingContainerTypes = inventoryContainerTypes;
+
   static SupervisorCatalog _catalog = const SupervisorCatalog();
   static List<UcArea> _areas = const [];
   static var _loaded = false;
@@ -21,7 +30,23 @@ class WasteCatalog {
     return const ['Zone-4', 'Zone-5'];
   }
 
-  static List<String> get containerTypes => _catalog.containerTypes;
+  /// Inventory sizes for Activity / Tagging (`1.1 m3` / `8 m3`).
+  static List<String> get containerTypes {
+    final fromCatalog = [
+      for (final t in _catalog.containerTypes)
+        if (_looksLikeInventorySize(t)) t,
+    ];
+    return fromCatalog.isEmpty ? inventoryContainerTypes : fromCatalog;
+  }
+
+  /// Same 2 options for tagging (do not use Open/Skip).
+  static List<String> get taggingContainerTypes => containerTypes;
+
+  static bool _looksLikeInventorySize(String value) {
+    final v = value.trim().toLowerCase();
+    return v.contains('m3') || v.contains('m³');
+  }
+
   static List<String> get vehicleTypes => _catalog.vehicleTypes;
   static List<CatalogVehicle> get vehicles => _catalog.vehicles;
   static List<CatalogActivity> get activities => _catalog.activities;

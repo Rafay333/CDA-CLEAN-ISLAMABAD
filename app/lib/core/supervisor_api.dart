@@ -529,8 +529,10 @@ class TaggingPrimarySite {
     this.zoneCode,
     this.latitude,
     this.longitude,
+    this.containerType,
     this.containerCount = 0,
     this.taggedCount = 0,
+    this.untaggedCount,
   });
 
   final int id;
@@ -538,18 +540,34 @@ class TaggingPrimarySite {
   final String? zoneCode;
   final double? latitude;
   final double? longitude;
+  /// Dominant inventory size under the site (`1.1 m3` / `8 m3`), when known.
+  final String? containerType;
   final int containerCount;
   final int taggedCount;
+  final int? untaggedCount;
+
+  /// Still needs tagging: no inventory yet, or at least one untagged container.
+  bool get needsTagging {
+    if (untaggedCount != null) return containerCount == 0 || untaggedCount! > 0;
+    return containerCount == 0 || taggedCount < containerCount;
+  }
 
   factory TaggingPrimarySite.fromJson(Map<String, dynamic> json) {
+    final containerCount = _int(json['container_count']);
+    final taggedCount = _int(json['tagged_count']);
+    final rawUntagged = json['untagged_count'];
+    final untaggedCount = rawUntagged == null ? null : _int(rawUntagged);
     return TaggingPrimarySite(
       id: _int(json['id']),
       name: _text(json['name']),
       zoneCode: _optional(json['zone_code']),
       latitude: _double(json['latitude']),
       longitude: _double(json['longitude']),
-      containerCount: _int(json['container_count']),
-      taggedCount: _int(json['tagged_count']),
+      containerType: _optional(json['container_type'] ?? json['type']),
+      containerCount: containerCount,
+      taggedCount: taggedCount,
+      untaggedCount: untaggedCount ??
+          (containerCount >= taggedCount ? containerCount - taggedCount : null),
     );
   }
 }
@@ -656,6 +674,7 @@ class SupervisorCatalog {
     this.ucs = const [],
     this.activities = const [],
     this.containerTypes = const [],
+    this.taggingContainerTypes = const [],
     this.vehicleTypes = const [],
     this.vehicles = const [],
     this.primarySites = const [],
@@ -665,7 +684,10 @@ class SupervisorCatalog {
   final List<CatalogZone> zones;
   final List<CatalogUc> ucs;
   final List<CatalogActivity> activities;
+  /// Inventory sizes for Activity (`1.1 m3` / `8 m3`).
   final List<String> containerTypes;
+  /// Optional tagging labels from catalog (`tagging_container_types`); app uses 1.1 m3 / 8 m3.
+  final List<String> taggingContainerTypes;
   final List<String> vehicleTypes;
   final List<CatalogVehicle> vehicles;
   final List<CatalogSite> primarySites;
@@ -690,6 +712,7 @@ class SupervisorCatalog {
       ucs: rows(json['ucs'], CatalogUc.fromJson),
       activities: rows(json['activities'], CatalogActivity.fromJson),
       containerTypes: names(json['container_types']),
+      taggingContainerTypes: names(json['tagging_container_types']),
       vehicleTypes: names(json['vehicle_types']),
       vehicles: rows(json['vehicles'], CatalogVehicle.fromJson),
       primarySites: rows(json['primary_sites'], CatalogSite.fromJson),
@@ -1312,7 +1335,12 @@ class SupervisorApi {
   }
 
   /// Preferred tagging picker: sites for Zone-4 / Zone-5 (omit zone for all).
-  Future<List<TaggingPrimarySite>> primarySites(String cnic, {String? zoneCode}) async {
+  /// Pass [purpose] `tagging` to prefer untagged-only sites from the API.
+  Future<List<TaggingPrimarySite>> primarySites(
+    String cnic, {
+    String? zoneCode,
+    String? purpose,
+  }) async {
     final data = _map(
       await _send(
         dio.get(
@@ -1320,6 +1348,7 @@ class SupervisorApi {
           queryParameters: {
             'supervisor_cnic': cnic,
             if (zoneCode != null && zoneCode.isNotEmpty) 'zone_code': zoneCode,
+            if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
           },
         ),
       ),
@@ -1339,12 +1368,19 @@ class SupervisorApi {
     double? siteLatitude,
     double? siteLongitude,
     List<TaggingContainer> items,
-  })> containersForPrimarySite(String cnic, int primarySiteId) async {
+  })> containersForPrimarySite(
+    String cnic,
+    int primarySiteId, {
+    String? purpose,
+  }) async {
     final data = _map(
       await _send(
         dio.get(
           '/api/supervisor/primary-sites/$primarySiteId/containers',
-          queryParameters: {'supervisor_cnic': cnic},
+          queryParameters: {
+            'supervisor_cnic': cnic,
+            if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
+          },
         ),
       ),
     );
