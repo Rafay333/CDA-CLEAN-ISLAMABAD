@@ -517,13 +517,19 @@ class _TaggingScreenState extends State<TaggingScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
               children: [
-                const _HeroCard(),
+                const ModuleHero(
+                  icon: Icons.sell_outlined,
+                  title: 'Container tagging',
+                  subtitle:
+                      'Zone → site → type auto-fills (1.1 m3 / 8 m3). Capture GPS and one clear photo.',
+                  colors: ModulePalette.waste,
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 14),
                   InlineMessage(tone: InlineTone.error, message: _error!),
                 ],
                 const SizedBox(height: 18),
-                _SectionCard(
+                ModulePanel(
                   title: 'Selection',
                   subtitle:
                       'Zone → site → type auto-fills from that site (1.1 m3 / 8 m3). UC not required.',
@@ -609,7 +615,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
                   ),
                 ],
                 const SizedBox(height: 14),
-                _SectionCard(
+                ModulePanel(
                   title: 'Live GPS',
                   subtitle: 'Device location is saved as the tagged position.',
                   child: Opacity(
@@ -626,7 +632,7 @@ class _TaggingScreenState extends State<TaggingScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
+                ModulePanel(
                   title: 'Container photo',
                   subtitle: 'One clear photo. Camera (front/back) or gallery.',
                   child: Opacity(
@@ -655,101 +661,6 @@ class _TaggingScreenState extends State<TaggingScreen> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _HeroCard extends StatelessWidget {
-  const _HeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0B6B52), Color(0xFF0F766E), Color(0xFF134E4A)],
-        ),
-        boxShadow: AppShadows.soft,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 26),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Tagging of Containers',
-                  style: AppType.section.copyWith(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Zone → site → type auto-fills → GPS → one photo.',
-                  style: AppType.caption.copyWith(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.soft,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: AppType.section.copyWith(fontSize: 15.5)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: AppType.caption.copyWith(height: 1.35)),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
     );
   }
 }

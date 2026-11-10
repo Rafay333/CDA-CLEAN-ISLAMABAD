@@ -9,3 +9,4 @@ export 'fields.dart';
 export 'identity.dart';
 export 'inputs.dart';
 export 'media.dart';
+export 'module_shell.dart';

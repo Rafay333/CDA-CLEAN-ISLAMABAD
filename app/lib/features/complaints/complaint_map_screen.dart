@@ -177,6 +177,13 @@ class _ComplaintMapScreenState extends State<ComplaintMapScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
             child: Column(
               children: [
+                const ModuleHero(
+                  icon: Icons.map_rounded,
+                  title: 'View complaints',
+                  subtitle: 'Explore union councils and open a pin to start or update a case.',
+                  colors: ModulePalette.complaints,
+                ),
+                const SizedBox(height: 12),
                 SearchBarField(
                   controller: _search,
                   hint: 'Search complaints or UC',

@@ -747,17 +747,18 @@ class _ActivityScreenState extends State<ActivityScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
               children: [
-                _HeroCard(
+                ModuleHero(
+                  icon: Icons.assignment_outlined,
                   title: 'Activity record',
                   subtitle: heroSubtitle,
-                  icon: Icons.assignment_outlined,
+                  colors: ModulePalette.waste,
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 14),
                   InlineMessage(tone: InlineTone.error, message: _error!),
                 ],
                 const SizedBox(height: 16),
-                _SectionCard(
+                ModulePanel(
                   title: 'Details',
                   subtitle: _isContainerFlow
                       ? 'Container type and vehicle type fill automatically from your selection.'
@@ -846,7 +847,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
+                ModulePanel(
                   title: 'Live location',
                   subtitle: photosOnly
                       ? 'GPS is stamped on each picture.'
@@ -859,7 +860,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
+                ModulePanel(
                   title: photosOnly ? 'Pictures' : 'Before pictures',
                   subtitle: photosOnly
                       ? 'At least 1, up to $_maxPlainPhotos GPS-stamped photos.'
@@ -892,7 +893,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ),
                 if (photosOnly) ...[
                   const SizedBox(height: 14),
-                  _SectionCard(
+                  ModulePanel(
                     title: 'Remarks',
                     subtitle: 'Optional notes for this activity.',
                     child: TextInput(
@@ -931,13 +932,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          const _HeroCard(
+          const ModuleHero(
+            icon: Icons.done_all_rounded,
             title: 'Finish the record',
             subtitle: 'Add the after picture, remarks and live location, then submit.',
-            icon: Icons.done_all_rounded,
+            colors: ModulePalette.waste,
           ),
           const SizedBox(height: 16),
-          _SectionCard(
+          ModulePanel(
             title: 'Summary',
             subtitle: 'From the previous step.',
             child: Column(
@@ -994,7 +996,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _SectionCard(
+          ModulePanel(
             title: 'Live location',
             subtitle: 'Device GPS is saved with this activity.',
             child: LocationCard(
@@ -1005,7 +1007,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _SectionCard(
+          ModulePanel(
             title: 'After pictures',
             subtitle: 'Up to $_maxAfterPhotos GPS-stamped photos after the activity.',
             child: Opacity(
@@ -1029,7 +1031,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _SectionCard(
+          ModulePanel(
             title: 'Remarks',
             subtitle: 'Optional notes for this activity.',
             child: TextInput(
@@ -1039,109 +1041,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
               maxLines: 4,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0B6B52), Color(0xFF0F766E), Color(0xFF134E4A)],
-        ),
-        boxShadow: AppShadows.soft,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: Colors.white, size: 26),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppType.section.copyWith(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: AppType.caption.copyWith(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.soft,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: AppType.section.copyWith(fontSize: 15.5)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: AppType.caption.copyWith(height: 1.35)),
-          const SizedBox(height: 14),
-          child,
         ],
       ),
     );

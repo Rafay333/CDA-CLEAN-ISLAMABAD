@@ -6,9 +6,8 @@ import '../../components/components.dart';
 import '../../core/hr1_api_manual.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
-import '../../theme/app_typography.dart';
 import '../../utils/display_format.dart';
-import '../hr/employee_details.dart';
+import '../hr_face/face_hr_ui.dart';
 import 'photo_capture_page_manual.dart';
 import 'photo_registration_screen_manual.dart';
 
@@ -24,6 +23,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
   final _api = Hr1ApiManual();
   List<Map<String, dynamic>> _employees = [];
   Map<String, dynamic>? _selected;
+  Map<String, dynamic>? _registration;
   bool _registered = false;
   List<Map<String, dynamic>> _today = [];
   String _camera = 'front';
@@ -79,6 +79,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
     if (selected == null || !mounted) return;
     setState(() {
       _selected = selected;
+      _registration = null;
       _registered = false;
       _message = null;
       _error = null;
@@ -98,6 +99,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
       if (!mounted) return;
       final registered = registration['registered'] == true;
       setState(() {
+        _registration = registration;
         _registered = registered;
         if (!registered) {
           _message = 'Register this worker before marking attendance.';
@@ -108,6 +110,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
     } on SupervisorException catch (error) {
       if (!mounted) return;
       setState(() {
+        _registration = null;
         _registered = false;
         _message = error.message;
         _tone = InlineTone.warning;
@@ -186,12 +189,13 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
       );
       if (!mounted) return;
       final attendance = result['attendance'] as Map<String, dynamic>? ?? {};
+      final msg = result['message'] as String? ?? 'Attendance saved.';
       setState(() {
         _saving = false;
-        _message = result['message'] as String? ?? 'Attendance saved.';
+        _message = msg;
         _tone = InlineTone.success;
       });
-      await _showSaved(attendance, result['message'] as String? ?? 'Attendance saved.');
+      await _showSaved(attendance, msg);
       if (!mounted) return;
       await _loadToday();
     } on SupervisorException catch (error) {
@@ -246,33 +250,14 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(message),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (url.isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    url,
-                    headers: _api.photoHeaders,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const Text('The stamped photo could not be loaded.'),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Text(attendance['address']?.toString() ?? '', style: AppType.body),
-              const SizedBox(height: 4),
-              Text(attendance['timestamp']?.toString() ?? '', style: AppType.caption),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
-        ],
+      builder: (context) => FaceHrResultSheet(
+        message: message,
+        photoUrl: url,
+        photoHeaders: _api.photoHeaders,
+        latitude: attendance['latitude'],
+        longitude: attendance['longitude'],
+        address: '${attendance['address'] ?? ''}',
+        timestamp: '${attendance['timestamp'] ?? ''}',
       ),
     );
   }
@@ -280,85 +265,124 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
+    final sessionCnic = AppStateScope.of(context).session?.cnic ?? '';
+    final name = '${selected?['name'] ?? ''}'.trim();
+    final role = '${selected?['role'] ?? ''}'.trim();
+    final cnicNo = '${selected?['cnic'] ?? ''}'.trim();
+    final shift = '${_registration?['shift'] ?? selected?['shift'] ?? ''}'.trim();
+    final contact = '${selected?['contact'] ?? ''}'.trim();
+    final checkOut = _nextType == 'check_out';
+    final photoUrl = _registered
+        ? _api.absolute(
+            _registration?['photo_url']?.toString() ??
+                (selected == null
+                    ? null
+                    : '/api/supervisor/hr-photo-manual/register/${_id(selected)}/photo'),
+            sessionCnic,
+          )
+        : '';
+
     return AppPage(
       title: 'Attendance',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
               children: [
-                if (_error != null) InlineMessage(message: _error!, tone: InlineTone.error),
-                OutlinedButton.icon(
-                  onPressed: _saving || _employees.isEmpty ? null : _pick,
-                  icon: const Icon(Icons.person_search_outlined),
-                  label: Text(selected == null ? 'Select name or CNIC' : '${selected['name']}'),
+                FaceHrHero(
+                  icon: Icons.location_on_rounded,
+                  title: 'GPS photo attendance',
+                  subtitle: 'One clear photo with live location. Check in and check out for the day.',
+                  colors: checkOut && selected != null && _registered
+                      ? const [Color(0xFF1D4ED8), Color(0xFF1E3A8A), Color(0xFF123B5D)]
+                      : const [Color(0xFF0F766E), Color(0xFF0E7490), Color(0xFF123B5D)],
+                ),
+                const SizedBox(height: 16),
+                if (_error != null) ...[
+                  InlineMessage(message: _error!, tone: InlineTone.error),
+                  const SizedBox(height: 12),
+                ],
+                FaceHrWorkerPicker(
+                  name: selected == null ? null : (name.isEmpty ? 'Worker' : name),
+                  hint: 'Select worker',
+                  subtitle: cnicNo.isEmpty ? role : cnicNo,
+                  enabled: !_saving && _employees.isNotEmpty,
+                  onTap: _pick,
                 ),
                 if (selected != null) ...[
                   const SizedBox(height: 16),
-                  EmployeeDetails(employee: selected),
-                  const SizedBox(height: 12),
-                  Hr1RegistrationBadge(registered: _registered),
+                  FaceHrWorkerCard(
+                    name: name,
+                    role: role,
+                    cnic: cnicNo,
+                    shift: shift,
+                    contact: contact,
+                    photo: photoUrl.isEmpty
+                        ? null
+                        : _RegisteredPhoto(url: photoUrl, headers: _api.photoHeaders),
+                    badge: FaceHrStatusChip(
+                      label: _registered ? 'Photo registered' : 'Photo not registered',
+                      ok: _registered,
+                    ),
+                  ),
                   if (_registered) ...[
-                  const SizedBox(height: 16),
-                  Text('Camera', style: AppType.section.copyWith(fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CameraChoice(
-                          label: 'Front',
-                          icon: Icons.photo_camera_front_outlined,
-                          selected: _camera == 'front',
-                          onTap: _saving ? null : () => setState(() => _camera = 'front'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _CameraChoice(
-                          label: 'Back',
-                          icon: Icons.photo_camera_back_outlined,
-                          selected: _camera == 'back',
-                          onTap: _saving ? null : () => setState(() => _camera = 'back'),
-                        ),
-                      ),
+                    const SizedBox(height: 16),
+                    FaceHrActionBanner(
+                      tone: checkOut ? FaceHrActionTone.checkOut : FaceHrActionTone.checkIn,
+                      icon: checkOut ? Icons.logout_rounded : Icons.login_rounded,
+                      title: checkOut ? 'Next: Check out' : 'Next: Check in',
+                      subtitle: 'Take one clear photo. GPS is stamped on the server.',
+                    ),
+                    const SizedBox(height: 18),
+                    const FaceHrSectionLabel('Camera'),
+                    const SizedBox(height: 10),
+                    FaceHrShiftPicker(
+                      shifts: const [
+                        ('Front', Icons.photo_camera_front_outlined),
+                        ('Back', Icons.photo_camera_back_outlined),
+                      ],
+                      value: _camera == 'back' ? 'Back' : 'Front',
+                      enabled: !_saving,
+                      onChanged: (value) => setState(() => _camera = value == 'Back' ? 'back' : 'front'),
+                    ),
+                    const SizedBox(height: 18),
+                    const FaceHrSectionLabel("Today's marks"),
+                    const SizedBox(height: 10),
+                    FaceHrTodayTimeline(
+                      rows: _today,
+                      formatWhen: _when,
+                      isSuspicious: (_) => false,
+                      flagNote: (_) => '',
+                    ),
+                  ],
+                ] else ...[
+                  const SizedBox(height: 18),
+                  const FaceHrStepGuide(
+                    steps: [
+                      (Icons.person_search_rounded, 'Pick the worker', 'Must already have a registration photo.'),
+                      (Icons.photo_camera_outlined, 'Take one photo', 'Front or back camera, good light.'),
+                      (Icons.my_location_outlined, 'GPS stamp', 'Live location is saved with the mark.'),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _nextType == 'check_out'
-                        ? 'This photo will check out.'
-                        : 'This photo will check in.',
-                    style: AppType.caption,
-                  ),
-                  if (_today.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text('Today', style: AppType.section.copyWith(fontSize: 16)),
-                    const SizedBox(height: 8),
-                    for (final row in _today) ...[
-                      InfoCard(
-                        label: row['type'] == 'check_out' ? 'Check out' : 'Check in',
-                        value: _when(row['timestamp']),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  ],
-                  ],
                 ],
                 if (_message != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
                   InlineMessage(message: _message!, tone: _tone),
                 ],
               ],
             ),
       bottom: selected == null || !_registered
           ? null
-          : Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: PrimaryButton(
-                label: 'Attendance',
-                icon: Icons.photo_camera_outlined,
-                loading: _saving,
-                onPressed: _saving ? null : _attend,
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                child: PrimaryButton(
+                  label: checkOut ? 'Mark check out' : 'Mark check in',
+                  icon: checkOut ? Icons.logout_rounded : Icons.photo_camera_outlined,
+                  loading: _saving,
+                  onPressed: _saving ? null : _attend,
+                ),
               ),
             ),
     );
@@ -371,43 +395,29 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
   }
 }
 
-class _CameraChoice extends StatelessWidget {
-  const _CameraChoice({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
+class _RegisteredPhoto extends StatelessWidget {
+  const _RegisteredPhoto({required this.url, required this.headers});
 
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback? onTap;
+  final String url;
+  final Map<String, String> headers;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFF0F766E) : const Color(0xFF8AA0B5);
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: selected ? const Color(0xFF0F766E) : const Color(0xFFE3EDF3)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(width: 6),
-              Text(label, style: AppType.body.copyWith(fontWeight: FontWeight.w600)),
-            ],
-          ),
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: FaceHrPalette.accentLine, width: 2.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.network(
+        url,
+        headers: headers,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const ColoredBox(
+          color: FaceHrPalette.accentSoft,
+          child: Icon(Icons.person_rounded, color: FaceHrPalette.accent, size: 34),
         ),
       ),
     );

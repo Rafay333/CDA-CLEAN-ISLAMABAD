@@ -109,7 +109,6 @@ class _AfterPhotoScreenState extends State<AfterPhotoScreen> {
     }
 
     final notes = _description.text.trim();
-    // Freeze resolve time at tap — never rewrite on later sync.
     final resolvedAt = pakistanNow();
     final resolvedAtIso = toPakistanIso(resolvedAt);
 
@@ -168,38 +167,61 @@ class _AfterPhotoScreenState extends State<AfterPhotoScreen> {
     final complaint = AppStateScope.of(context).complaint;
     return AppPage(
       title: 'After Photos',
-      bottom: PrimaryButton(label: 'Submit', loading: _saving, onPressed: _saving ? null : _submit),
+      bottom: PrimaryButton(
+        label: 'Mark completed',
+        loading: _saving,
+        onPressed: _saving ? null : _submit,
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          const SectionHeader(title: 'Before Photos'),
-          const SizedBox(height: 8),
-          if (complaint.photos.isEmpty)
-            const PhotoCard(index: 0, emptyLabel: 'No before photos')
-          else
-            SizedBox(
-              height: 112,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: complaint.photos.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (context, index) => PhotoCard(index: index),
-              ),
-            ),
-          const SizedBox(height: 16),
-          PhotoUploader(
-            title: 'After Photos',
-            hint: 'Add More Photos',
-            photos: complaint.afterPhotos,
-            onAdd: _add,
-            onRemove: _remove,
+          ModuleHero(
+            icon: Icons.done_all_rounded,
+            title: complaint.issueId == null
+                ? 'Complete complaint'
+                : 'Complete #${complaint.issueId}',
+            subtitle: 'Add after photos and an optional note, then mark the complaint completed.',
+            colors: ModulePalette.complaints,
           ),
           const SizedBox(height: 16),
-          TextInput(
-            label: 'Description',
-            controller: _description,
-            hint: 'Enter description',
-            maxLines: 4,
+          ModulePanel(
+            title: 'Before photos',
+            accent: ModulePalette.complaintsAccent,
+            child: complaint.photos.isEmpty
+                ? const PhotoCard(index: 0, emptyLabel: 'No before photos')
+                : SizedBox(
+                    height: 112,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: complaint.photos.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) => PhotoCard(index: index),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 14),
+          ModulePanel(
+            title: 'After photos',
+            subtitle: 'At least one photo is required.',
+            accent: ModulePalette.complaintsAccent,
+            child: PhotoUploader(
+              title: 'After Photos',
+              hint: 'Add More Photos',
+              photos: complaint.afterPhotos,
+              onAdd: _add,
+              onRemove: _remove,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ModulePanel(
+            title: 'Notes',
+            accent: ModulePalette.complaintsAccent,
+            child: TextInput(
+              label: 'Description',
+              controller: _description,
+              hint: 'Enter description',
+              maxLines: 4,
+            ),
           ),
         ],
       ),

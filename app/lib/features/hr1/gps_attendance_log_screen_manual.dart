@@ -4,9 +4,8 @@ import '../../components/components.dart';
 import '../../core/hr1_api_manual.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_typography.dart';
 import '../../utils/pakistan_time.dart';
+import '../hr_face/face_hr_ui.dart';
 
 class GpsAttendanceLogScreenManual extends StatefulWidget {
   const GpsAttendanceLogScreenManual({super.key});
@@ -78,26 +77,10 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
     if (!mounted || url.isEmpty) return;
     await showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Image.network(
-              url,
-              headers: _api.photoHeaders,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('The stamped photo could not be loaded.'),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
-            ),
-          ],
-        ),
+      builder: (context) => FaceHrStampedPhotoDialog(
+        photoUrl: url,
+        photoHeaders: _api.photoHeaders,
+        title: row['type'] == 'check_out' ? 'Check-out photo' : 'Check-in photo',
       ),
     );
   }
@@ -114,6 +97,8 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
     final present = people.length;
     final checkedIn = people.where((person) => person.checkIn != null).length;
     final checkedOut = people.where((person) => person.checkOut != null).length;
+    final cnic = AppStateScope.of(context).session?.cnic ?? '';
+
     return AppPage(
       title: 'Attendance log',
       actions: [
@@ -126,8 +111,15 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
         ),
       ],
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
+          const FaceHrHero(
+            icon: Icons.assignment_turned_in_outlined,
+            title: 'Manual attendance log',
+            subtitle: 'Daily check-in and check-out tracks saved with GPS photo stamps.',
+            colors: [Color(0xFF1688D4), Color(0xFF0F766E), Color(0xFF123B5D)],
+          ),
+          const SizedBox(height: 16),
           DatePickerField(
             label: 'Date',
             value: _date,
@@ -140,14 +132,21 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
           ),
           const SizedBox(height: 12),
           if (!_loading && _error == null) ...[
-            _DaySummary(present: present, checkedIn: checkedIn, checkedOut: checkedOut),
+            FaceHrDaySummary(present: present, checkedIn: checkedIn, checkedOut: checkedOut),
             const SizedBox(height: 12),
           ],
           TextField(
             controller: _search,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Search name or CNIC',
-              prefixIcon: Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -164,9 +163,18 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
             )
           else
             for (final person in visible) ...[
-              _PersonCard(
-                person: person,
-                cnic: AppStateScope.of(context).session?.cnic ?? '',
+              FaceHrLogPersonCard(
+                name: person.name,
+                cnic: person.cnic,
+                shift: person.shift,
+                registeredAt: person.registeredAt,
+                photoUrl: _api.absolute(
+                  '/api/supervisor/hr-photo-manual/register/${person.employeeId}/photo',
+                  cnic,
+                ),
+                photoHeaders: _api.photoHeaders,
+                checkIn: person.checkIn,
+                checkOut: person.checkOut,
                 onOpen: _openPhoto,
               ),
               const SizedBox(height: 12),
@@ -204,102 +212,6 @@ class _GpsAttendanceLogScreenManualState extends State<GpsAttendanceLogScreenMan
   }
 }
 
-class _DaySummary extends StatelessWidget {
-  const _DaySummary({required this.present, required this.checkedIn, required this.checkedOut});
-
-  final int present;
-  final int checkedIn;
-  final int checkedOut;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.soft,
-      ),
-      child: Row(
-        children: [
-          _SummaryStat(
-            label: 'Present',
-            value: present,
-            icon: Icons.groups_rounded,
-            color: AppColors.emerald,
-          ),
-          const _SummaryDivider(),
-          _SummaryStat(
-            label: 'Check in',
-            value: checkedIn,
-            icon: Icons.login_rounded,
-            color: AppColors.teal,
-          ),
-          const _SummaryDivider(),
-          _SummaryStat(
-            label: 'Check out',
-            value: checkedOut,
-            icon: Icons.logout_rounded,
-            color: AppColors.navy,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryStat extends StatelessWidget {
-  const _SummaryStat({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final int value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        child: Column(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 18, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '$value',
-              style: AppType.title.copyWith(fontSize: 22, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 2),
-            Text(label, style: AppType.caption, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryDivider extends StatelessWidget {
-  const _SummaryDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(width: 1, height: 56, color: AppColors.border);
-  }
-}
-
 class _PersonDay {
   _PersonDay({
     required this.employeeId,
@@ -316,133 +228,4 @@ class _PersonDay {
   final String registeredAt;
   Map<String, dynamic>? checkIn;
   Map<String, dynamic>? checkOut;
-}
-
-class _PersonCard extends StatelessWidget {
-  const _PersonCard({required this.person, required this.cnic, required this.onOpen});
-
-  final _PersonDay person;
-  final String cnic;
-  final Future<void> Function(Map<String, dynamic>? row) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final api = Hr1ApiManual();
-    final photo = api.absolute('/api/supervisor/hr-photo-manual/register/${person.employeeId}/photo', cnic);
-    return Material(
-      color: AppColors.white,
-      elevation: 1,
-      shadowColor: const Color(0x14000000),
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(person.name, style: AppType.section.copyWith(fontSize: 18, height: 1.25)),
-            const SizedBox(height: 6),
-            Text('Shift Id: ${_shown(person.shift)}', style: AppType.body.copyWith(fontSize: 13.5)),
-            Text('Cnic: ${_shown(person.cnic)}', style: AppType.body.copyWith(fontSize: 13.5)),
-            Text('Registration Time: ${_clock(person.registeredAt)}', style: AppType.body.copyWith(fontSize: 13.5)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipOval(
-                  child: photo.isEmpty
-                      ? const _PhotoFallback()
-                      : Image.network(
-                          photo,
-                          headers: api.photoHeaders,
-                          width: 72,
-                          height: 72,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const _PhotoFallback(),
-                        ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: _MarkColumn(title: 'Check In', row: person.checkIn, onOpen: onOpen)),
-                Expanded(child: _MarkColumn(title: 'Check Out', row: person.checkOut, onOpen: onOpen)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MarkColumn extends StatelessWidget {
-  const _MarkColumn({required this.title, required this.row, required this.onOpen});
-
-  final String title;
-  final Map<String, dynamic>? row;
-  final Future<void> Function(Map<String, dynamic>? row) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final marked = row != null;
-    return InkWell(
-      onTap: marked ? () => onOpen(row) : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          children: [
-            Icon(
-              marked ? Icons.check_circle : Icons.circle_outlined,
-              color: marked ? const Color(0xFF22C55E) : AppColors.disabledText,
-              size: 22,
-            ),
-            const SizedBox(height: 2),
-            Text(title, textAlign: TextAlign.center, style: AppType.label.copyWith(fontSize: 13)),
-            const SizedBox(height: 8),
-            Text('Server ID', textAlign: TextAlign.center, style: AppType.caption),
-            Text(
-              marked ? '${row!['id'] ?? ''}' : '—',
-              textAlign: TextAlign.center,
-              style: AppType.body.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            const SizedBox(height: 6),
-            Text('Server Time', textAlign: TextAlign.center, style: AppType.caption),
-            Text(
-              _clock(row?['timestamp']),
-              textAlign: TextAlign.center,
-              style: AppType.body.copyWith(fontWeight: FontWeight.w600, fontSize: 12.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoFallback extends StatelessWidget {
-  const _PhotoFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 72,
-      height: 72,
-      child: ColoredBox(
-        color: AppColors.disabled,
-        child: Icon(Icons.person, color: AppColors.disabledText),
-      ),
-    );
-  }
-}
-
-String _shown(String value) {
-  final text = value.trim();
-  return text.isEmpty || text == 'null' ? '—' : text;
-}
-
-String _clock(Object? value) {
-  final text = '${value ?? ''}'.trim();
-  if (text.isEmpty || text == 'null') return '—';
-  final date = DateTime.tryParse(text);
-  if (date == null) return text;
-  final local = date.toLocal();
-  String two(int number) => number.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
 }

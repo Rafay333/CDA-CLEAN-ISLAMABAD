@@ -79,6 +79,13 @@ class _EvidenceHistoryScreenState extends State<EvidenceHistoryScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
+          const ModuleHero(
+            icon: Icons.photo_library_outlined,
+            title: 'My evidence',
+            subtitle: 'Review geo-tagged photos you uploaded for a selected date.',
+            colors: ModulePalette.waste,
+          ),
+          const SizedBox(height: 16),
           DatePickerField(
             label: 'Date',
             value: _date,
@@ -106,32 +113,46 @@ class _EvidenceHistoryScreenState extends State<EvidenceHistoryScreen> {
               message: '${day.count} photo${day.count == 1 ? '' : 's'} uploaded on ${day.date}.',
             ),
             if (day.activitiesSummary.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              const SectionHeader(title: 'By activity'),
-              const SizedBox(height: 10),
-              for (final row in day.activitiesSummary) ...[
-                ListItem(
-                  title: row.activity,
-                  subtitle: [
-                    if (row.pedSerial != null && row.pedSerial!.isNotEmpty) 'PED ${row.pedSerial}',
-                    '${row.photoCount} photo${row.photoCount == 1 ? '' : 's'}',
-                    if (row.hitsPed) 'Scores PED',
-                  ].join(' · '),
-                  trailing: StatusBadge(
-                    label: '${row.photoCount}',
-                    color: row.photoCount > 0 ? AppColors.success : AppColors.warning,
-                  ),
+              const SizedBox(height: 16),
+              ModulePanel(
+                title: 'By activity',
+                child: Column(
+                  children: [
+                    for (var i = 0; i < day.activitiesSummary.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 10),
+                      ListItem(
+                        title: day.activitiesSummary[i].activity,
+                        subtitle: [
+                          if (day.activitiesSummary[i].pedSerial != null &&
+                              day.activitiesSummary[i].pedSerial!.isNotEmpty)
+                            'PED ${day.activitiesSummary[i].pedSerial}',
+                          '${day.activitiesSummary[i].photoCount} photo${day.activitiesSummary[i].photoCount == 1 ? '' : 's'}',
+                          if (day.activitiesSummary[i].hitsPed) 'Scores PED',
+                        ].join(' · '),
+                        trailing: StatusBadge(
+                          label: '${day.activitiesSummary[i].photoCount}',
+                          color: day.activitiesSummary[i].photoCount > 0
+                              ? AppColors.success
+                              : AppColors.warning,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 10),
-              ],
+              ),
             ],
-            const SizedBox(height: 8),
-            const SectionHeader(title: 'Photos'),
-            const SizedBox(height: 10),
-            for (final item in day.items) ...[
-              _EvidenceTile(item: item),
-              const SizedBox(height: 10),
-            ],
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Photos',
+              child: Column(
+                children: [
+                  for (var i = 0; i < day.items.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    _EvidenceTile(item: day.items[i]),
+                  ],
+                ],
+              ),
+            ),
           ],
         ],
       ),

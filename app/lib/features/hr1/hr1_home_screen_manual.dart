@@ -5,6 +5,7 @@ import '../../components/components.dart';
 import '../../constants/app_routes.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
+import '../hr_face/face_hr_ui.dart';
 
 class Hr1HomeScreenManual extends StatelessWidget {
   const Hr1HomeScreenManual({super.key});
@@ -34,6 +35,13 @@ class Hr1HomeScreenManual extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
+                const FaceHrHero(
+                  icon: Icons.photo_camera_front_rounded,
+                  title: 'Manual GPS attendance',
+                  subtitle:
+                      'Register one photo per worker, then mark check-in and check-out with a GPS stamp.',
+                ),
+                const SizedBox(height: 16),
                 _Card(
                   icon: Icons.photo_camera_front_outlined,
                   accent: const Color(0xFF0F766E),
@@ -42,7 +50,7 @@ class Hr1HomeScreenManual extends StatelessWidget {
                   subtitle: 'Choose a worker, a shift, and one clear face photo.',
                   onTap: () => context.push(AppRoutes.hr1Register),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 _Card(
                   icon: Icons.location_on_outlined,
                   accent: const Color(0xFF1688D4),
@@ -51,7 +59,7 @@ class Hr1HomeScreenManual extends StatelessWidget {
                   subtitle: 'Select a worker and take the attendance photo.',
                   onTap: () => context.push(AppRoutes.hr1Attendance),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 _Card(
                   icon: Icons.assignment_turned_in_outlined,
                   accent: const Color(0xFF3B82F6),
@@ -98,33 +106,49 @@ class _Card extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: badge,
-                  borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: AppShadows.soft,
+            color: AppColors.white,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: badge,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accent),
                 ),
-                child: Icon(icon, color: accent),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppType.section.copyWith(fontSize: 16)),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: AppType.caption),
-                  ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: AppType.section.copyWith(fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Text(subtitle, style: AppType.caption.copyWith(height: 1.35)),
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.chevron_right_rounded),
-            ],
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: badge,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.chevron_right_rounded, color: accent, size: 20),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -14,14 +14,14 @@ import '../features/complaints/complaints_home_screen.dart';
 import '../features/complaints/submit_complaint_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/home/notifications_screen.dart';
-import '../features/hr/attendance_log_screen.dart';
-import '../features/hr/attendance_screen.dart';
-import '../features/hr/hr_home_screen.dart';
-import '../features/hr/worker_registration_screen.dart';
 import '../features/hr1/gps_attendance_log_screen_manual.dart';
 import '../features/hr1/gps_attendance_screen_manual.dart';
 import '../features/hr1/hr1_home_screen_manual.dart';
 import '../features/hr1/photo_registration_screen_manual.dart';
+import '../features/hr_face/gps_attendance_log_screen_face.dart';
+import '../features/hr_face/gps_attendance_screen_face.dart';
+import '../features/hr_face/hr_face_home_screen.dart';
+import '../features/hr_face/photo_registration_screen_face.dart';
 import '../features/profile/profile_details_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -87,22 +87,6 @@ GoRouter createAppRouter() {
         builder: (context, state) => const ProfileDetailsScreen(),
       ),
       GoRoute(
-        path: AppRoutes.hr,
-        builder: (context, state) => const HrHomeScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.workerRegistration,
-        builder: (context, state) => const WorkerRegistrationScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.attendance,
-        builder: (context, state) => const AttendanceScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.attendanceLog,
-        builder: (context, state) => const AttendanceLogScreen(),
-      ),
-      GoRoute(
         path: AppRoutes.hr1,
         builder: (context, state) => const Hr1HomeScreenManual(),
       ),
@@ -117,6 +101,22 @@ GoRouter createAppRouter() {
       GoRoute(
         path: AppRoutes.hr1AttendanceLog,
         builder: (context, state) => const GpsAttendanceLogScreenManual(),
+      ),
+      GoRoute(
+        path: AppRoutes.hrFace,
+        builder: (context, state) => const HrFaceHomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.hrFaceRegister,
+        builder: (context, state) => const PhotoRegistrationScreenFace(),
+      ),
+      GoRoute(
+        path: AppRoutes.hrFaceAttendance,
+        builder: (context, state) => const GpsAttendanceScreenFace(),
+      ),
+      GoRoute(
+        path: AppRoutes.hrFaceAttendanceLog,
+        builder: (context, state) => const GpsAttendanceLogScreenFace(),
       ),
       GoRoute(
         path: AppRoutes.waste,

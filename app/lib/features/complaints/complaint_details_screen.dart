@@ -6,6 +6,7 @@ import '../../constants/app_copy.dart';
 import '../../constants/app_routes.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
+import '../../theme/app_typography.dart';
 import '../../utils/display_format.dart';
 
 class ComplaintDetailsScreen extends StatefulWidget {
@@ -84,6 +85,8 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final complaint = AppStateScope.of(context).complaint;
+    final status = complaint.submitted ? complaint.status : ComplaintStatus.none;
+    final statusColor = complaintStatusColor(status);
     final actionLabel = switch (complaint.status) {
       ComplaintStatus.resolved => 'Completed',
       ComplaintStatus.inProcessing => 'Add after photos',
@@ -101,90 +104,100 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
             : () => _takeAction(complaint),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
+          ModuleHero(
+            icon: Icons.report_outlined,
+            title: complaint.issueId == null
+                ? 'Complaint details'
+                : 'Complaint #${complaint.issueId}',
+            subtitle: displayOr(complaint.description, 'Open a complaint from the list, or submit a new one.'),
+            colors: ModulePalette.complaints,
+          ),
+          const SizedBox(height: 16),
           if (complaint.issueId == null)
             const InlineMessage(
               tone: InlineTone.warning,
               message: 'Open a complaint from the list, or submit a new one.',
+            )
+          else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ModuleStatusChip(
+                label: complaintStatusLabel(status),
+                color: statusColor,
+              ),
             ),
-          if (!complaint.submitted) const SizedBox(height: 12),
-          Row(
-            children: [
-              StatusBadge(
-                label: complaintStatusLabel(
-                  complaint.submitted ? complaint.status : ComplaintStatus.none,
-                ),
-                color: complaintStatusColor(
-                  complaint.submitted ? complaint.status : ComplaintStatus.none,
-                ),
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Summary',
+              accent: ModulePalette.complaintsAccent,
+              child: ModuleMetaCard(
+                accent: ModulePalette.complaintsAccent,
+                rows: [
+                  (Icons.tag_outlined, 'ID', complaint.issueId == null ? AppCopy.notAvailable : '${complaint.issueId}'),
+                  (Icons.place_outlined, 'Location', displayOr(complaint.sector, AppCopy.locationNotSelected)),
+                  (
+                    Icons.schedule_outlined,
+                    'Submitted',
+                    complaint.submittedAt == null
+                        ? AppCopy.notAvailable
+                        : formatDateTime(complaint.submittedAt!)
+                  ),
+                  (Icons.flag_outlined, 'Status', complaintStatusLabel(status)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Description',
+              accent: ModulePalette.complaintsAccent,
+              child: Text(
+                displayOr(complaint.description, 'No description added'),
+                style: AppType.body.copyWith(height: 1.45),
+              ),
+            ),
+            if (complaint.followUp.trim().isNotEmpty) ...[
+              const SizedBox(height: 14),
+              ModulePanel(
+                title: 'Follow-up note',
+                accent: ModulePalette.complaintsAccent,
+                child: Text(complaint.followUp, style: AppType.body.copyWith(height: 1.45)),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          InfoCard(
-            label: 'Complaint ID',
-            value: complaint.issueId == null ? AppCopy.notAvailable : '${complaint.issueId}',
-          ),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Location',
-            value: displayOr(complaint.sector, AppCopy.locationNotSelected),
-          ),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Submitted On',
-            value: complaint.submittedAt == null
-                ? AppCopy.notAvailable
-                : formatDateTime(complaint.submittedAt!),
-          ),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Status',
-            value: complaintStatusLabel(
-              complaint.submitted ? complaint.status : ComplaintStatus.none,
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Before photos',
+              accent: ModulePalette.complaintsAccent,
+              child: complaint.remoteBefore.isNotEmpty
+                  ? _RemotePhotos(paths: complaint.remoteBefore)
+                  : _PhotoRow(photos: complaint.photos, emptyLabel: 'No photos added'),
             ),
-          ),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Description',
-            value: displayOr(complaint.description, 'No description added'),
-          ),
-          if (complaint.followUp.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            InfoCard(label: 'Follow-up note', value: complaint.followUp),
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'After photos',
+              accent: ModulePalette.complaintsAccent,
+              child: complaint.remoteAfter.isNotEmpty
+                  ? _RemotePhotos(paths: complaint.remoteAfter)
+                  : _PhotoRow(photos: complaint.afterPhotos, emptyLabel: 'No after photos'),
+            ),
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Activity',
+              accent: ModulePalette.complaintsAccent,
+              child: Timeline(
+                emptyLabel: 'No status updates yet',
+                events: [
+                  for (final event in complaint.timeline)
+                    TimelineEvent(
+                      title: event.title,
+                      timeLabel: formatDateTime(event.at),
+                      color: event.color,
+                    ),
+                ],
+              ),
+            ),
           ],
-          const SizedBox(height: 18),
-          const SectionHeader(title: 'Photos'),
-          const SizedBox(height: 8),
-          if (complaint.remoteBefore.isNotEmpty)
-            _RemotePhotos(paths: complaint.remoteBefore)
-          else
-            _PhotoRow(photos: complaint.photos, emptyLabel: 'No photos added'),
-          const SizedBox(height: 16),
-          const SectionHeader(title: 'After Photos'),
-          const SizedBox(height: 8),
-          if (complaint.remoteAfter.isNotEmpty)
-            _RemotePhotos(paths: complaint.remoteAfter)
-          else
-            _PhotoRow(
-              photos: complaint.afterPhotos,
-              emptyLabel: 'No after photos',
-            ),
-          const SizedBox(height: 18),
-          const SectionHeader(title: 'Activity'),
-          const SizedBox(height: 10),
-          Timeline(
-            emptyLabel: 'No status updates yet',
-            events: [
-              for (final event in complaint.timeline)
-                TimelineEvent(
-                  title: event.title,
-                  timeLabel: formatDateTime(event.at),
-                  color: event.color,
-                ),
-            ],
-          ),
         ],
       ),
     );
@@ -227,7 +240,7 @@ class _RemotePhotos extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             child: Image.network(
               supervisorMediaUrl(paths[index]),
               width: 104,

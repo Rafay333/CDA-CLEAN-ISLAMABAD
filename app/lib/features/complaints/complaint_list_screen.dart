@@ -157,11 +157,16 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Start this complaint?'),
         content: const Text('After you confirm, this complaint moves to In Processing.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: ModulePalette.complaintsAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirm'),
+          ),
         ],
       ),
     );
@@ -239,6 +244,15 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                ModuleHero(
+                  icon: widget.openOnly ? Icons.pending_actions_rounded : Icons.list_alt_rounded,
+                  title: widget.openOnly ? 'Open complaints' : 'All complaints',
+                  subtitle: widget.openOnly
+                      ? 'Pending and in-processing cases ready for action.'
+                      : 'Search, filter and open any cleanliness complaint.',
+                  colors: ModulePalette.complaints,
+                ),
+                const SizedBox(height: 14),
                 SearchBarField(
                   controller: _search,
                   hint: 'Search by ID, sector, or description',
@@ -274,11 +288,11 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                       children: const [
-                        LoadingSkeleton(height: 96, radius: 16),
+                        LoadingSkeleton(height: 110, radius: 18),
                         SizedBox(height: 12),
-                        LoadingSkeleton(height: 96, radius: 16),
+                        LoadingSkeleton(height: 110, radius: 18),
                         SizedBox(height: 12),
-                        LoadingSkeleton(height: 96, radius: 16),
+                        LoadingSkeleton(height: 110, radius: 18),
                       ],
                     )
                   : _loadError != null
@@ -296,7 +310,11 @@ class _ComplaintListScreenState extends State<ComplaintListScreen> {
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                               children: const [
-                                InlineMessage(message: 'No complaints match this filter.'),
+                                EmptyState(
+                                  icon: Icons.inbox_outlined,
+                                  title: 'No complaints',
+                                  message: 'No complaints match this filter.',
+                                ),
                               ],
                             )
                           : ListView.separated(
@@ -353,110 +371,128 @@ class _ComplaintStatusCard extends StatelessWidget {
       if (issue.sector.trim().isNotEmpty) issue.sector.trim(),
       if ((issue.landmark ?? '').trim().isNotEmpty) issue.landmark!.trim(),
     ].join(' · ');
-    final description = issue.description.trim().isEmpty ? 'No description provided' : issue.description.trim();
+    final description =
+        issue.description.trim().isEmpty ? 'No description provided' : issue.description.trim();
 
     return Material(
       color: AppColors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: AppShadows.soft,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.85),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.report_outlined, color: statusColor, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppType.section.copyWith(fontSize: 15),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '#${issue.id}${place.isEmpty ? '' : ' · $place'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppType.caption,
+                          child: Icon(Icons.report_outlined, color: statusColor, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppType.section.copyWith(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '#${issue.id}${place.isEmpty ? '' : ' · $place'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppType.caption,
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: 8),
+                        ModuleStatusChip(label: statusLabel, color: statusColor),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.body.copyWith(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        height: 1.35,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    StatusBadge(label: statusLabel, color: statusColor),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (issue.dateLogged.trim().isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              issue.dateLogged,
+                              style: AppType.caption.copyWith(fontSize: 12),
+                            ),
+                          )
+                        else
+                          const Spacer(),
+                        TextButton.icon(
+                          onPressed: onLocation,
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: AppColors.navy,
+                          ),
+                          icon: const Icon(Icons.place_outlined, size: 16),
+                          label: const Text('Map'),
+                        ),
+                        if (onAction != null)
+                          FilledButton(
+                            onPressed: onAction,
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: statusColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(actionLabel),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppType.body.copyWith(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    if (issue.dateLogged.trim().isNotEmpty)
-                      Expanded(
-                        child: Text(
-                          issue.dateLogged,
-                          style: AppType.caption.copyWith(fontSize: 12),
-                        ),
-                      )
-                    else
-                      const Spacer(),
-                    TextButton(
-                      onPressed: onLocation,
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: AppColors.navy,
-                      ),
-                      child: const Text('Location'),
-                    ),
-                    if (onAction != null)
-                      FilledButton.tonal(
-                        onPressed: onAction,
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          backgroundColor: statusColor.withValues(alpha: 0.14),
-                          foregroundColor: statusColor,
-                        ),
-                        child: Text(actionLabel),
-                      ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary.withValues(alpha: 0.8)),
-                  ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

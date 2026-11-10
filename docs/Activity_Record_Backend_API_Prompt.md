@@ -17,20 +17,22 @@ This is **not** `POST /api/supervisor/evidence`. Activity is a rich **field reco
 
 ---
 
-## Two Activity flows (app + API)
+## Three Activity flows (app + API)
 
-| Activity | Required location fields | Container / vehicle |
-|----------|--------------------------|---------------------|
-| **Container Collection/Clearance** (`containers`) | `zone_code` | **Required:** container + type, vehicle + type |
-| **All other activities** | `zone_code` (**`uc_code` optional**) | **Omit** — do not send container/vehicle fields |
+| Activity | Location | Container / vehicle | Photos |
+|----------|----------|---------------------|--------|
+| **Container Collection/Clearance** (`containers`) | `zone_code` | **Required** | **1–2 before + 1–2 after** |
+| **Transfer Station Management** (`tcp`) | `zone_code` + optional `uc_code` | **Omit** | **1–2 before + 1–2 after** |
+| **Bulk Waste Collection** (`bulk`) | `zone_code` + optional `uc_code` | **Omit** | **1–2 before + 1–2 after** |
+| **All remaining activities** (e.g. `dtd`, sweeping, …) | `zone_code` + optional `uc_code` | **Omit** | **1–2 photos only** (send as `before`; **do not require `after`**) |
 
-Shared for both: GPS (`latitude`/`longitude`), remarks (optional), **1–2** before + **1–2** after photos, one folder per record.
+Shared: GPS (`latitude`/`longitude`), remarks (optional), one folder per record.
 
 ---
 
 ## PED decision (B)
 
-Activity submit **also** upserts one `Evidence` row for the same `activity` name + `date` using the **first after** photo path (when 1–2 after files are sent), so regenerating PED scores the Digital Pictorial Evidence subfactor (15%) without a second mobile upload.
+Activity submit **also** upserts one `Evidence` row for the same `activity` name + `date` using the **first after** photo path when after files exist; for photos-only activities use the **first `before`** photo, so regenerating PED scores the Digital Pictorial Evidence subfactor (15%) without a second mobile upload.
 
 Field-record metadata remains the source of truth for portal ops review.
 
@@ -49,7 +51,7 @@ Adds `vehicles[]` (with `vehicle_type`), zones/UCs, and sets `container_types` t
 - `1.1 m3`
 - `8 m3`
 
-(`tagging_container_types` keeps Open/Skip labels for the tagging form.)
+(`tagging_container_types` is the same 1.1 m3 / 8 m3 list.)
 
 ### Vehicles (container flow only)
 
@@ -99,8 +101,8 @@ Content-Type: multipart/form-data
 | `latitude` / `longitude` | Yes | Or `geo_tag` |
 | `remarks` | No | |
 | `date` | No | `yyyy-MM-dd`, default today |
-| `before` (file) | Yes | **1–2** images. Repeat part name `before`. |
-| `after` (file) | Yes | **1–2** images. Repeat part name `after`. |
+| `before` (file) | Yes | **1–2** images. Repeat part name `before`. For photos-only activities these are the only pictures. |
+| `after` (file) | Conditional | **Required** for `containers`, `tcp`, `bulk` (**1–2**). **Not required** for all other activities. |
 
 ### Container Collection/Clearance only
 
@@ -115,13 +117,16 @@ Content-Type: multipart/form-data
 
 Do **not** require `uc_code` for this activity.
 
-### All other activities
+### Transfer / Bulk / all other non-container activities
 
 | Field | Required | Notes |
 |-------|----------|--------|
 | `uc_code` | No | Optional union council for the selected zone |
 
 Do **not** require (and app will not send) `container_id`, `container_name`, `container_type`, `vehicle_id`, `vehicle_number`, or `vehicle_type`.
+
+- **`tcp` / `bulk`:** require **before + after** (1–2 each).
+- **Remaining activities:** require **1–2 `before` only**; do **not** reject missing `after`.
 
 **One record = one folder.** All before + after files from this multipart POST land under the same `{record_id}` folder.
 
@@ -147,26 +152,26 @@ curl -X POST "https://cda-swm.asktech.com.pk:5010/api/supervisor/field-records" 
   -F "after=@/path/after1.jpg"
 ```
 
-### cURL — other activities (with optional UC)
+### cURL — Transfer / Bulk (before + after, optional UC)
 
 ```bash
 curl -X POST "https://cda-swm.asktech.com.pk:5010/api/supervisor/field-records" \
   -H "authkey: CDA-EMP-8fK2mN9qR4vX7wP1sT6yH3bL5cJ0" \
   -F "supervisor_cnic=3520212345671" \
   -F "kind=activity" \
-  -F "activity_code=dtd" \
+  -F "activity_code=tcp" \
   -F "zone_code=Zone-4" \
   -F "uc_code=UC-12" \
   -F "latitude=33.6844" \
   -F "longitude=73.0479" \
-  -F "remarks=Door to door completed" \
+  -F "remarks=TCP cleared" \
   -F "before=@/path/before1.jpg" \
   -F "after=@/path/after1.jpg"
 ```
 
-### cURL — other activities (no UC — still valid)
+### cURL — photos-only activities (e.g. Door to Door)
 
-Backend **must accept** this without `uc_code`. Do not reject for missing UC.
+Backend **must accept** without `after` and without `uc_code`.
 
 ```bash
 curl -X POST "https://cda-swm.asktech.com.pk:5010/api/supervisor/field-records" \
@@ -178,8 +183,8 @@ curl -X POST "https://cda-swm.asktech.com.pk:5010/api/supervisor/field-records" 
   -F "latitude=33.6844" \
   -F "longitude=73.0479" \
   -F "remarks=Door to door completed" \
-  -F "before=@/path/before1.jpg" \
-  -F "after=@/path/after1.jpg"
+  -F "before=@/path/photo1.jpg" \
+  -F "before=@/path/photo2.jpg"
 ```
 
 ### Success `201`
@@ -232,7 +237,8 @@ Inventory types are fixed: **1.1 m3** | **8 m3**.
 
 ## Flutter wiring (this app)
 
-- **Container Collection/Clearance:** Zone → containers + vehicles → GPS → 1–2 before → 1–2 after → submit with container/vehicle fields
-- **Other activities:** Zone → optional UC (no container/vehicle) → GPS → 1–2 before → 1–2 after → submit (`uc_code` only if selected)
-- Submit → **one** `POST /field-records` (`kind=activity`) with all before + after files in the same multipart → stored under **one** `{record_id}` folder
-- PED evidence uses the **first after** photo (backend decision B)
+- **Container Collection/Clearance:** unchanged — Zone → containers + vehicles → GPS → 1–2 before → 1–2 after → submit with container/vehicle
+- **Transfer Station / Bulk Waste:** Zone → optional UC → GPS → 1–2 before → 1–2 after → submit (no container/vehicle)
+- **All remaining activities:** single screen — Zone → optional UC → GPS → **1–2 photos** → remarks → submit (`before` only, no `after`)
+- Submit → **one** `POST /field-records` (`kind=activity`) → **one** `{record_id}` folder
+- PED evidence: first **after** when present, else first **before** (decision B)

@@ -5,7 +5,6 @@ import '../../components/components.dart';
 import '../../constants/app_routes.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_typography.dart';
 import 'waste_catalog.dart';
 
 class SolidWasteHomeScreen extends StatefulWidget {
@@ -36,7 +35,7 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F7FB),
+      backgroundColor: AppColors.background,
       body: Column(
         children: [
           const PageHeader(title: 'Solid Waste Management', centerTitle: true),
@@ -44,23 +43,29 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                _WasteCard(
+                const ModuleHero(
+                  icon: Icons.delete_outline_rounded,
+                  title: 'Solid waste field work',
+                  subtitle:
+                      'Record daily activity with before/after photos, or tag containers with live GPS.',
+                  colors: ModulePalette.waste,
+                ),
+                const SizedBox(height: 16),
+                ModuleMenuCard(
                   icon: Icons.show_chart_rounded,
-                  accent: const Color(0xFF12C3CE),
-                  badge: const Color(0xFFE4F8FA),
-                  wash: const Color(0xFFD2F4F7),
+                  accent: const Color(0xFF0284C7),
+                  badge: const Color(0xFFE0F2FE),
                   title: 'Activity',
-                  subtitle: 'Before / after photos with zone & GPS.',
+                  subtitle: 'Before / after photos with zone, container and GPS.',
                   onTap: () => context.push(AppRoutes.wasteActivity),
                 ),
-                const SizedBox(height: 14),
-                _WasteCard(
+                const SizedBox(height: 12),
+                ModuleMenuCard(
                   icon: Icons.sell_outlined,
-                  accent: const Color(0xFF2F9E6B),
-                  badge: const Color(0xFFE5F6EE),
-                  wash: const Color(0xFFD7F3E6),
+                  accent: const Color(0xFF0F766E),
+                  badge: const Color(0xFFE5F6F4),
                   title: 'Tagging',
-                  subtitle: 'Zone → site → container → GPS + photo',
+                  subtitle: 'Zone → site → container type → GPS + photo.',
                   onTap: () => context.push(AppRoutes.wasteTagging),
                 ),
               ],
@@ -71,111 +76,6 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
       bottomNavigationBar: AppBottomNavigation(
         currentIndex: 0,
         onTap: (index) => _openTab(index),
-      ),
-    );
-  }
-}
-
-class _WasteCard extends StatelessWidget {
-  const _WasteCard({
-    required this.icon,
-    required this.accent,
-    required this.badge,
-    required this.wash,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color accent;
-  final Color badge;
-  final Color wash;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1012304A),
-            blurRadius: 14,
-            offset: Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(20),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE3EDF3)),
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.white, AppColors.white, wash],
-                stops: const [0, 0.55, 1],
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: badge,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(icon, color: accent, size: 26),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AppType.section.copyWith(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF12304A),
-                            height: 1.25,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: AppType.caption.copyWith(
-                            fontSize: 13,
-                            height: 1.35,
-                            color: const Color(0xFF60758F),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF8AA0B5),
-                    size: 22,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

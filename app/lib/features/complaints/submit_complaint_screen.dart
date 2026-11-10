@@ -139,54 +139,83 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
   @override
   Widget build(BuildContext context) {
     final photos = AppStateScope.of(context).complaint.photos;
-    final location = _lat == null || _lng == null
-        ? (_locating ? 'Finding location…' : 'Location not selected. You can still submit.')
-        : '$_lat, $_lng';
     return AppPage(
       title: 'Submit Complaint',
       bottom: PrimaryButton(
-        label: 'Submit',
+        label: 'Submit complaint',
         loading: _saving,
         onPressed: _saving ? null : _submit,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          InlineMessage(message: location),
+          const ModuleHero(
+            icon: Icons.add_comment_rounded,
+            title: 'New complaint',
+            subtitle: 'Describe the issue, add photos, and optionally stamp live GPS.',
+            colors: ModulePalette.complaints,
+          ),
+          const SizedBox(height: 16),
+          ModulePanel(
+            title: 'Live location',
+            subtitle: _lat == null || _lng == null
+                ? 'Location is optional — you can still submit.'
+                : 'GPS will be attached to this complaint.',
+            accent: ModulePalette.complaintsAccent,
+            child: LocationCard(
+              latitude: _lat,
+              longitude: _lng,
+              loading: _locating,
+              onGetLocation: _locate,
+            ),
+          ),
           const SizedBox(height: 14),
-          TextInput(
-            label: 'Description',
-            controller: _description,
-            hint: 'Describe the complaint',
-            maxLines: 4,
-            errorText: _error,
+          ModulePanel(
+            title: 'Details',
+            accent: ModulePalette.complaintsAccent,
+            child: Column(
+              children: [
+                TextInput(
+                  label: 'Description',
+                  controller: _description,
+                  hint: 'Describe the complaint',
+                  maxLines: 4,
+                  errorText: _error,
+                ),
+                const SizedBox(height: 14),
+                TextInput(
+                  label: 'Sector / UC',
+                  controller: _sector,
+                  hint: 'Optional',
+                ),
+                const SizedBox(height: 14),
+                TextInput(
+                  label: 'Landmark',
+                  controller: _landmark,
+                  hint: 'Optional',
+                ),
+                const SizedBox(height: 14),
+                TextInput(
+                  label: 'Activity',
+                  controller: _activity,
+                  hint: 'Optional',
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          TextInput(
-            label: 'Sector / UC',
-            controller: _sector,
-            hint: 'Optional',
-          ),
-          const SizedBox(height: 16),
-          TextInput(
-            label: 'Landmark',
-            controller: _landmark,
-            hint: 'Optional',
-          ),
-          const SizedBox(height: 16),
-          TextInput(
-            label: 'Activity',
-            controller: _activity,
-            hint: 'Optional',
-          ),
-          const SizedBox(height: 16),
-          PhotoUploader(
+          const SizedBox(height: 14),
+          ModulePanel(
             title: 'Photos',
-            hint: 'Add photo',
-            photos: photos,
-            maxPhotos: 10,
-            onAdd: _addPhoto,
-            onRemove: _removePhoto,
+            subtitle: 'Up to 10 photos.',
+            accent: ModulePalette.complaintsAccent,
+            child: PhotoUploader(
+              title: 'Photos',
+              hint: 'Add photo',
+              photos: photos,
+              maxPhotos: 10,
+              onAdd: _addPhoto,
+              onRemove: _removePhoto,
+            ),
           ),
         ],
       ),

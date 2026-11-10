@@ -4,8 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../components/components.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_typography.dart';
 import '../../utils/gps_photo_stamp.dart';
 
 class EvidenceUploadArgs {
@@ -266,65 +264,78 @@ class _EvidenceUploadScreenState extends State<EvidenceUploadScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                if (_error != null) ...[
-                  InlineMessage(tone: InlineTone.error, message: _error!),
-                  const SizedBox(height: 14),
-                ],
-                Text(
-                  'Geo-tagged photos for $_date. Up to 10 images in one upload.',
-                  style: AppType.body.copyWith(color: AppColors.textSecondary, height: 1.4),
+                ModuleHero(
+                  icon: Icons.photo_camera_outlined,
+                  title: 'Daily PED evidence',
+                  subtitle: 'Geo-tagged photos for $_date. Up to 10 images in one upload.',
+                  colors: ModulePalette.waste,
                 ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  InlineMessage(tone: InlineTone.error, message: _error!),
+                ],
                 const SizedBox(height: 16),
-                if (locked)
-                  InfoCard(
-                    label: ped == null ? 'Activity' : 'PED $ped',
-                    value: selected?.activity ?? widget.args?.activity ?? 'Activity',
-                    icon: Icons.assignment_outlined,
-                  )
-                else
-                  DropdownField(
-                    label: 'Activity',
-                    hint: 'Select activity',
-                    items: [for (final item in _activities) _label(item)],
-                    value: selected == null ? null : _label(selected),
-                    onChanged: (value) {
-                      for (final item in _activities) {
-                        if (_label(item) == value) {
-                          setState(() => _code = item.code);
-                          return;
-                        }
-                      }
-                    },
-                  ),
+                ModulePanel(
+                  title: 'Activity',
+                  child: locked
+                      ? InfoCard(
+                          label: ped == null ? 'Activity' : 'PED $ped',
+                          value: selected?.activity ?? widget.args?.activity ?? 'Activity',
+                          icon: Icons.assignment_outlined,
+                        )
+                      : DropdownField(
+                          label: 'Activity',
+                          hint: 'Select activity',
+                          items: [for (final item in _activities) _label(item)],
+                          value: selected == null ? null : _label(selected),
+                          onChanged: (value) {
+                            for (final item in _activities) {
+                              if (_label(item) == value) {
+                                setState(() => _code = item.code);
+                                return;
+                              }
+                            }
+                          },
+                        ),
+                ),
                 if (hitsPed) ...[
                   const SizedBox(height: 10),
                   const InlineMessage(
                     tone: InlineTone.info,
-                    message: 'This activity scores the Digital Pictorial Evidence subfactor (15%) after PED is regenerated for this date.',
+                    message:
+                        'This activity scores the Digital Pictorial Evidence subfactor (15%) after PED is regenerated for this date.',
                   ),
                 ],
-                const SizedBox(height: 16),
-                LocationCard(
-                  latitude: lat,
-                  longitude: lng,
-                  loading: _locating,
-                  onGetLocation: _locate,
+                const SizedBox(height: 14),
+                ModulePanel(
+                  title: 'Live location',
+                  subtitle: 'Fetch GPS before capturing photos.',
+                  child: LocationCard(
+                    latitude: lat,
+                    longitude: lng,
+                    loading: _locating,
+                    onGetLocation: _locate,
+                  ),
                 ),
-                const SizedBox(height: 16),
-                Opacity(
-                  opacity: _gpsReady ? 1 : 0.55,
-                  child: IgnorePointer(
-                    ignoring: !_gpsReady,
-                    child: PhotoUploader(
-                      title: 'Pictures',
-                      hint: 'Capture or upload',
-                      caption: _gpsReady
-                          ? 'Each photo is stamped with lat/long and place detail. Maximum 10.'
-                          : 'Fetch GPS first, then capture. Photos are stamped like tagging.',
-                      maxPhotos: 10,
-                      photos: _photos,
-                      onAdd: _onAddPhoto,
-                      onRemove: (id) => setState(() => _photos.removeWhere((photo) => photo.id == id)),
+                const SizedBox(height: 14),
+                ModulePanel(
+                  title: 'Pictures',
+                  subtitle: 'Each photo is stamped with lat/long. Maximum 10.',
+                  child: Opacity(
+                    opacity: _gpsReady ? 1 : 0.55,
+                    child: IgnorePointer(
+                      ignoring: !_gpsReady,
+                      child: PhotoUploader(
+                        title: 'Pictures',
+                        hint: 'Capture or upload',
+                        caption: _gpsReady
+                            ? 'Each photo is stamped with lat/long and place detail. Maximum 10.'
+                            : 'Fetch GPS first, then capture. Photos are stamped like tagging.',
+                        maxPhotos: 10,
+                        photos: _photos,
+                        onAdd: _onAddPhoto,
+                        onRemove: (id) => setState(() => _photos.removeWhere((photo) => photo.id == id)),
+                      ),
                     ),
                   ),
                 ),

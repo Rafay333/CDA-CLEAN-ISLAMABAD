@@ -16,120 +16,102 @@ class RecordDetailsScreen extends StatelessWidget {
     final onServer = waste.savedAt != null && !state.wastePendingSync;
     return AppPage(
       title: 'Record Details',
-      bottom: null,
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          Row(
-            children: [
-              StatusBadge(
-                label: onServer ? 'Saved' : 'Pending',
-                color: onServer ? AppColors.success : AppColors.warning,
-              ),
-              const Spacer(),
-              if (waste.savedAt != null)
-                Text(
-                  formatDateTime(waste.savedAt!),
-                  style: const TextStyle(fontSize: 12),
-                ),
-            ],
+          ModuleHero(
+            icon: waste.kind == WasteKind.tagging
+                ? Icons.sell_outlined
+                : Icons.assignment_outlined,
+            title: _headline(waste),
+            subtitle: onServer
+                ? 'Saved on the server${waste.savedAt == null ? '' : ' · ${formatDateTime(waste.savedAt!)}'}'
+                : 'Pending sync to the server',
+            colors: ModulePalette.waste,
           ),
           const SizedBox(height: 16),
-          InfoCard(label: _kindLabel(waste), value: _headline(waste)),
-          if (waste.kind == WasteKind.activity) ...[
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'Zone',
-              value: displayOr(waste.zone, AppCopy.notSelected),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ModuleStatusChip(
+              label: onServer ? 'Saved' : 'Pending',
+              color: onServer ? AppColors.success : AppColors.warning,
             ),
-            if ((waste.uc ?? '').isNotEmpty) ...[
-              const SizedBox(height: 8),
-              InfoCard(
-                label: 'UC',
-                value: displayOr(waste.uc, AppCopy.notSelected),
-              ),
-            ],
-            if ((waste.containerName ?? '').isNotEmpty) ...[
-              const SizedBox(height: 8),
-              InfoCard(
-                label: 'Container',
-                value: displayOr(waste.containerName, AppCopy.notSelected),
-              ),
-            ],
-            if ((waste.containerType ?? '').isNotEmpty) ...[
-              const SizedBox(height: 8),
-              InfoCard(
-                label: 'Container Type',
-                value: displayOr(waste.containerType, AppCopy.notSelected),
-              ),
-            ],
-            const SizedBox(height: 12),
-            if (waste.afterPhotos.isEmpty) ...[
-              _PhotoStrip(
+          ),
+          const SizedBox(height: 14),
+          ModulePanel(
+            title: _kindLabel(waste),
+            child: ModuleMetaCard(
+              rows: [
+                if (waste.kind == WasteKind.activity) ...[
+                  (Icons.assignment_outlined, 'Activity', displayOr(waste.activity, AppCopy.notSelected)),
+                  (Icons.map_outlined, 'Zone', displayOr(waste.zone, AppCopy.notSelected)),
+                  if ((waste.uc ?? '').isNotEmpty)
+                    (Icons.location_city_outlined, 'UC', displayOr(waste.uc, AppCopy.notSelected)),
+                  if ((waste.containerName ?? '').isNotEmpty)
+                    (Icons.delete_outline, 'Container', displayOr(waste.containerName, AppCopy.notSelected)),
+                  if ((waste.containerType ?? '').isNotEmpty)
+                    (Icons.category_outlined, 'Type', displayOr(waste.containerType, AppCopy.notSelected)),
+                ],
+                if (waste.kind == WasteKind.tagging) ...[
+                  (Icons.map_outlined, 'Zone', displayOr(waste.zone, AppCopy.notSelected)),
+                  (Icons.category_outlined, 'Type', displayOr(waste.containerType, AppCopy.notSelected)),
+                  (Icons.place_outlined, 'Site', displayOr(waste.primarySite, AppCopy.notSelected)),
+                  (
+                    Icons.delete_outline,
+                    'Container',
+                    displayOr(
+                      waste.containerName ??
+                          (waste.containerId == null ? null : '#${waste.containerId}'),
+                      AppCopy.notSelected,
+                    )
+                  ),
+                  (
+                    Icons.my_location_outlined,
+                    'GPS',
+                    displayOr(
+                      [
+                        if ((waste.latitude ?? '').isNotEmpty) 'Lat ${waste.latitude}',
+                        if ((waste.longitude ?? '').isNotEmpty) 'Lng ${waste.longitude}',
+                      ].join(' · '),
+                      AppCopy.notSelected,
+                    )
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (waste.kind == WasteKind.activity) ...[
+            const SizedBox(height: 14),
+            if (waste.afterPhotos.isEmpty)
+              ModulePanel(
                 title: 'Pictures',
-                photos: waste.beforePhotos,
-                emptyLabel: 'No picture',
-              ),
-            ] else ...[
-              _PhotoStrip(
+                child: _PhotoStrip(photos: waste.beforePhotos, emptyLabel: 'No picture'),
+              )
+            else ...[
+              ModulePanel(
                 title: 'Before',
-                photos: waste.beforePhotos,
-                emptyLabel: 'No before picture',
+                child: _PhotoStrip(photos: waste.beforePhotos, emptyLabel: 'No before picture'),
               ),
-              const SizedBox(height: 12),
-              _PhotoStrip(
+              const SizedBox(height: 14),
+              ModulePanel(
                 title: 'After',
-                photos: waste.afterPhotos,
-                emptyLabel: 'No after picture',
+                child: _PhotoStrip(photos: waste.afterPhotos, emptyLabel: 'No after picture'),
               ),
             ],
           ],
           if (waste.kind == WasteKind.tagging) ...[
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'Zone',
-              value: displayOr(waste.zone, AppCopy.notSelected),
-            ),
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'Container Type',
-              value: displayOr(waste.containerType, AppCopy.notSelected),
-            ),
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'Site',
-              value: displayOr(waste.primarySite, AppCopy.notSelected),
-            ),
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'Container',
-              value: displayOr(
-                waste.containerName ??
-                    (waste.containerId == null ? null : '#${waste.containerId}'),
-                AppCopy.notSelected,
-              ),
-            ),
-            const SizedBox(height: 8),
-            InfoCard(
-              label: 'GPS',
-              value: displayOr(
-                [
-                  if ((waste.latitude ?? '').isNotEmpty) 'Lat ${waste.latitude}',
-                  if ((waste.longitude ?? '').isNotEmpty) 'Lng ${waste.longitude}',
-                ].join(' · '),
-                AppCopy.notSelected,
-              ),
-            ),
-            const SizedBox(height: 18),
-            _PhotoStrip(
+            const SizedBox(height: 14),
+            ModulePanel(
               title: 'Tagging photo',
-              photos: waste.beforePhotos,
-              emptyLabel: 'No picture',
+              child: _PhotoStrip(photos: waste.beforePhotos, emptyLabel: 'No picture'),
             ),
           ],
           if (waste.remarks.trim().isNotEmpty) ...[
-            const SizedBox(height: 16),
-            InfoCard(label: 'Remarks', value: waste.remarks),
+            const SizedBox(height: 14),
+            ModulePanel(
+              title: 'Remarks',
+              child: Text(waste.remarks),
+            ),
           ],
         ],
       ),
@@ -152,35 +134,24 @@ class RecordDetailsScreen extends StatelessWidget {
 
 class _PhotoStrip extends StatelessWidget {
   const _PhotoStrip({
-    required this.title,
     required this.photos,
     required this.emptyLabel,
   });
 
-  final String title;
   final List<LocalPhoto> photos;
   final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SectionHeader(title: title),
-        const SizedBox(height: 8),
-        if (photos.isEmpty)
-          PhotoCard(index: 0, emptyLabel: emptyLabel)
-        else
-          SizedBox(
-            height: 112,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: photos.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) => PhotoCard(index: index),
-            ),
-          ),
-      ],
+    if (photos.isEmpty) return PhotoCard(index: 0, emptyLabel: emptyLabel);
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) => PhotoCard(index: index),
+      ),
     );
   }
 }

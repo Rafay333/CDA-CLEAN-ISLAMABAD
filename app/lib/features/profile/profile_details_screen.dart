@@ -4,6 +4,8 @@ import '../../components/components.dart';
 import '../../constants/app_copy.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_typography.dart';
 import '../../utils/display_format.dart';
 import '../../utils/validators.dart';
 
@@ -97,47 +99,122 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
     return AppPage(
       title: 'Profile Details',
       bottom: PrimaryButton(
-        label: 'Save',
+        label: 'Save profile',
         loading: _saving,
         onPressed: _saving ? null : _save,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          Center(child: AppAvatar(name: profile.name, size: 84)),
+          ModuleHero(
+            icon: Icons.badge_outlined,
+            title: displayOr(profile.name, AppCopy.roleLabel),
+            subtitle: 'Update optional contact details. Name and CNIC come from your account.',
+            colors: ModulePalette.profile,
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: ModulePalette.profileAccent.withValues(alpha: 0.25), width: 2),
+                boxShadow: AppShadows.soft,
+              ),
+              child: AppAvatar(name: profile.name, size: 88),
+            ),
+          ),
           const SizedBox(height: 16),
           if (_error != null) ...[
             InlineMessage(tone: InlineTone.error, message: _error!),
             const SizedBox(height: 12),
           ],
-          InfoCard(label: 'Name', value: displayOr(profile.name, AppCopy.notProvided)),
-          const SizedBox(height: 8),
-          InfoCard(label: 'CNIC', value: displayOr(profile.cnic, AppCopy.notProvided)),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Contractor',
-            value: displayOr(profile.contractorName, AppCopy.notProvided),
+          ModulePanel(
+            title: 'Account',
+            subtitle: 'Read-only details from the supervisor server.',
+            accent: ModulePalette.profileAccent,
+            child: ModuleMetaCard(
+              accent: ModulePalette.profileAccent,
+              rows: [
+                (Icons.person_outline, 'Name', displayOr(profile.name, AppCopy.notProvided)),
+                (Icons.badge_outlined, 'CNIC', displayOr(profile.cnic, AppCopy.notProvided)),
+                (
+                  Icons.business_outlined,
+                  'Contractor',
+                  displayOr(profile.contractorName, AppCopy.notProvided)
+                ),
+                (
+                  Icons.verified_user_outlined,
+                  'Account',
+                  displayOr(profile.accountType, AppCopy.notProvided)
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          InfoCard(
-            label: 'Account type',
-            value: displayOr(profile.accountType, AppCopy.notProvided),
-          ),
-          const SizedBox(height: 16),
-          TextInput(label: 'Father name', controller: _father, hint: 'Optional'),
-          const SizedBox(height: 16),
-          TextInput(
-            label: 'Mobile number',
-            controller: _mobile,
-            hint: 'Optional',
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: 16),
-          ListItem(
-            title: 'Date of birth',
-            subtitle: _dob == null ? AppCopy.notProvided : formatDate(_dob!),
-            leading: const Icon(Icons.cake_outlined),
-            onTap: _pickDob,
+          const SizedBox(height: 14),
+          ModulePanel(
+            title: 'Editable details',
+            subtitle: 'These fields sync when you tap Save profile.',
+            accent: ModulePalette.profileAccent,
+            child: Column(
+              children: [
+                TextInput(label: 'Father name', controller: _father, hint: 'Optional'),
+                const SizedBox(height: 14),
+                TextInput(
+                  label: 'Mobile number',
+                  controller: _mobile,
+                  hint: 'Optional',
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 14),
+                Material(
+                  color: ModulePalette.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _pickDob,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: ModulePalette.profileAccent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.cake_outlined,
+                              color: ModulePalette.profileAccent,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Date of birth',
+                                  style: AppType.label.copyWith(color: ModulePalette.ink),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _dob == null ? AppCopy.notProvided : formatDate(_dob!),
+                                  style: AppType.caption.copyWith(color: ModulePalette.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.calendar_month_outlined, color: ModulePalette.muted),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
