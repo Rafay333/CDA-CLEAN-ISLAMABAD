@@ -29,10 +29,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
   String? _containerType;
   CatalogVehicle? _vehicle;
   String? _vehicleType;
+  /// Vehicle is valid only for this container. Stops a previous visit's
+  /// vehicle from being submitted with a different container.
+  int? _vehicleBoundContainerId;
   final List<LocalPhoto> _beforePhotos = [];
   final List<LocalPhoto> _afterPhotos = [];
   String? _lat;
   String? _lng;
+  DateTime? _fixAt;
+  int? _fixContainerId;
+  String? _fixZone;
+  bool _fixFromPhoto = false;
+  int _zoneToken = 0;
+  int _containerToken = 0;
+  int _fixToken = 0;
+  FreshFixRequest? _fixRequest;
 
   static const _maxBeforePhotos = 2;
   static const _maxAfterPhotos = 2;
@@ -76,8 +87,42 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   void dispose() {
+    _fixRequest?.cancel();
     _remarks.dispose();
     super.dispose();
+  }
+
+  void _wipeFix() {
+    _lat = null;
+    _lng = null;
+    _fixAt = null;
+    _fixContainerId = null;
+    _fixZone = null;
+    _fixFromPhoto = false;
+  }
+
+  void _wipeVehicle() {
+    _vehicle = null;
+    _vehicleType = null;
+    _vehicleBoundContainerId = null;
+  }
+
+  bool get _vehicleReady =>
+      _vehicle != null &&
+      (_vehicleType?.trim().isNotEmpty ?? false) &&
+      _vehicleBoundContainerId != null &&
+      _vehicleBoundContainerId == _container?.containerId;
+
+  /// Photo fixes can back a submit for a few minutes. A preview fix cannot,
+  /// or the pin from the previous stop would be saved again.
+  bool _recentFixUsable() {
+    final at = _fixAt;
+    if (at == null || !_gpsReady) return false;
+    final age = DateTime.now().difference(at);
+    if (_fixZone != _zone) return false;
+    if (_isContainerFlow && _fixContainerId != _container?.containerId) return false;
+    if (_fixFromPhoto) return age <= const Duration(minutes: 3);
+    return age <= const Duration(seconds: 20);
   }
 
   bool get _gpsReady =>
@@ -111,7 +156,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   /// Container flow needs container + vehicle. Others only need a zone (UC optional).
   bool get _detailsReady =>
-      _isContainerFlow ? (_container != null && _vehicle != null) : _zone != null;
+      _isContainerFlow ? (_container != null && _vehicleReady) : _zone != null;
 
   Future<void> _prepare() async {
     final session = AppStateScope.read(context).session;
@@ -163,6 +208,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   void _clear() {
+    _fixRequest?.cancel();
     setState(() {
       _step = _ActivityStep.before;
       _activity = null;
@@ -170,16 +216,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _uc = null;
       _container = null;
       _containerType = null;
-      _vehicle = null;
-      _vehicleType = null;
+      _wipeVehicle();
       _beforePhotos.clear();
       _afterPhotos.clear();
-      _lat = null;
-      _lng = null;
       _containers = const [];
       _error = null;
       _remarks.clear();
+      _wipeFix();
     });
+    _locate();
   }
 
   CatalogActivity? _selectedActivity() {
@@ -190,6 +235,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   void _onActivity(String value) {
+    _fixRequest?.cancel();
     setState(() {
       _step = _ActivityStep.before;
       _activity = value;
@@ -197,31 +243,42 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _uc = null;
       _container = null;
       _containerType = null;
-      _vehicle = null;
-      _vehicleType = null;
+      _wipeVehicle();
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
       _error = null;
       _remarks.clear();
+      _wipeFix();
     });
+    _locate();
   }
 
+  bool _zoneStill(int token, String zoneCode) =>
+      mounted && token == _zoneToken && _zone == zoneCode;
+
   Future<void> _onZone(String value) async {
+    final token = ++_zoneToken;
+    _containerToken++;
+    _fixRequest?.cancel();
     setState(() {
       _zone = value;
       _uc = null;
       _container = null;
       _containerType = null;
-      _vehicle = null;
-      _vehicleType = null;
+      _wipeVehicle();
       _beforePhotos.clear();
+      _afterPhotos.clear();
       _containers = const [];
       _loadingContainers = _isContainerFlow;
       _loadingVehicles = _isContainerFlow;
       _error = null;
+      _remarks.clear();
+      _wipeFix();
     });
+    _locate();
     if (!_isContainerFlow) {
+      if (!_zoneStill(token, value)) return;
       setState(() {
         _loadingContainers = false;
         _loadingVehicles = false;
@@ -230,6 +287,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
     final session = AppStateScope.read(context).session;
     if (session == null) {
+      if (!_zoneStill(token, value)) return;
       setState(() {
         _loadingContainers = false;
         _loadingVehicles = false;
@@ -237,12 +295,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _snack('Sign in again.');
       return;
     }
-    _loadVehicles(session.cnic, zoneCode: value);
+    _loadVehicles(session.cnic, zoneCode: value, token: token);
     try {
       final api = SupervisorApi();
       var rows = await api.containers(session.cnic, zoneCode: value);
       // Fallback: aggregate containers from sites if zone endpoint is empty/unavailable.
-      if (rows.isEmpty) {
+      if (rows.isEmpty && _zoneStill(token, value)) {
         try {
           final sites = await api.primarySites(session.cnic, zoneCode: value);
           final batches = await Future.wait([
@@ -256,21 +314,30 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ];
         } catch (_) {}
       }
+      if (!_zoneStill(token, value)) return;
       rows.sort((a, b) => a.containerName.compareTo(b.containerName));
-      if (!mounted) return;
       setState(() {
         _containers = rows;
         _loadingContainers = false;
+        if (_container != null && !rows.any((item) => item.containerId == _container!.containerId)) {
+          _container = null;
+          _containerType = null;
+          _wipeVehicle();
+          _beforePhotos.clear();
+          _afterPhotos.clear();
+          _remarks.clear();
+          _wipeFix();
+        }
       });
       if (rows.isEmpty) _snack('No containers found for $value.');
     } on SupervisorException catch (error) {
-      if (!mounted) return;
+      if (!_zoneStill(token, value)) return;
       setState(() {
         _loadingContainers = false;
         _error = error.message;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_zoneStill(token, value)) return;
       setState(() {
         _loadingContainers = false;
         _error = 'Could not load containers for this zone.';
@@ -278,83 +345,191 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
-  Future<void> _loadVehicles(String cnic, {String? zoneCode}) async {
-    try {
-      var rows = await SupervisorApi().vehicles(cnic, zoneCode: zoneCode);
-      if (rows.isEmpty) {
-        rows = [
-          for (final item in WasteCatalog.vehicles)
-            if (zoneCode == null ||
-                zoneCode.isEmpty ||
-                item.zoneCode == null ||
-                item.zoneCode == zoneCode)
-              item,
-        ];
-      }
-      rows.sort((a, b) => a.number.compareTo(b.number));
-      if (!mounted) return;
-      setState(() {
-        _vehicles = rows;
-        _loadingVehicles = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _vehicles = [
-          for (final item in WasteCatalog.vehicles)
-            if (zoneCode == null ||
-                zoneCode.isEmpty ||
-                item.zoneCode == null ||
-                item.zoneCode == zoneCode)
-              item,
-        ];
-        _loadingVehicles = false;
-      });
+  Future<void> _loadVehicles(String cnic, {required String zoneCode, required int token}) async {
+    List<CatalogVehicle> fallback() {
+      return [
+        for (final item in WasteCatalog.vehicles)
+          if (zoneCode.isEmpty || item.zoneCode == null || item.zoneCode == zoneCode) item,
+      ];
     }
+
+    List<CatalogVehicle> rows;
+    try {
+      rows = await SupervisorApi().vehicles(cnic, zoneCode: zoneCode);
+      if (rows.isEmpty) rows = fallback();
+    } catch (_) {
+      rows = fallback();
+    }
+    if (!_zoneStill(token, zoneCode)) return;
+    rows.sort((a, b) => a.number.compareTo(b.number));
+    setState(() {
+      _vehicles = rows;
+      _loadingVehicles = false;
+      if (_vehicle != null && (!_vehicleStillListed(_vehicle!) || !_vehicleReady)) {
+        _wipeVehicle();
+      }
+    });
   }
 
-  void _onVehicle(String number) {
-    CatalogVehicle? selected;
+  bool _vehicleStillListed(CatalogVehicle vehicle) {
     for (final item in _vehicles) {
-      if (item.number == number) selected = item;
+      if (vehicle.id != null && item.id == vehicle.id) return true;
+      if (item.id == vehicle.id &&
+          item.number == vehicle.number &&
+          item.vehicleType == vehicle.vehicleType &&
+          item.zoneCode == vehicle.zoneCode) {
+        return true;
+      }
     }
-    if (selected == null) return;
-    final picked = selected;
+    return false;
+  }
+
+  String _vehicleKey(CatalogVehicle item) {
+    final id = item.id;
+    if (id != null) return 'id:$id';
+    return 'plate:${item.number}|${item.vehicleType ?? ''}|${item.zoneCode ?? ''}';
+  }
+
+  List<String> _vehicleChoiceValues() {
+    final counts = <String, int>{};
+    final values = <String>[];
+    for (final item in _vehicles) {
+      final base = _vehicleKey(item);
+      final n = (counts[base] ?? 0) + 1;
+      counts[base] = n;
+      values.add(n == 1 ? base : '$base#$n');
+    }
+    return values;
+  }
+
+  String _vehicleChoiceLabel(CatalogVehicle item) {
+    var sameNumber = 0;
+    for (final other in _vehicles) {
+      if (other.number == item.number) sameNumber++;
+    }
+    if (sameNumber < 2) return item.number;
+    final type = item.vehicleType?.trim();
+    if (type != null && type.isNotEmpty) {
+      var sameType = 0;
+      for (final other in _vehicles) {
+        if (other.number == item.number && other.vehicleType?.trim() == type) sameType++;
+      }
+      if (sameType < 2) return '${item.number} · $type';
+    }
+    final id = item.id;
+    return id == null ? '${item.number} · ${item.zoneCode ?? 'vehicle'}' : '${item.number} · $id';
+  }
+
+  String? _selectedVehicleValue() {
+    final vehicle = _vehicle;
+    if (vehicle == null) return null;
+    final values = _vehicleChoiceValues();
+    for (var i = 0; i < _vehicles.length && i < values.length; i++) {
+      final item = _vehicles[i];
+      if (vehicle.id != null && item.id == vehicle.id) return values[i];
+      if (item.id == vehicle.id &&
+          item.number == vehicle.number &&
+          item.vehicleType == vehicle.vehicleType &&
+          item.zoneCode == vehicle.zoneCode) {
+        return values[i];
+      }
+    }
+    return null;
+  }
+
+  void _onVehicle(String key) {
+    if (_container == null) {
+      _snack('Select a container first.');
+      return;
+    }
+    final values = _vehicleChoiceValues();
+    final index = values.indexOf(key);
+    if (index < 0 || index >= _vehicles.length) {
+      _snack('That vehicle is no longer in this zone. Choose it again.');
+      return;
+    }
+    final picked = _vehicles[index];
+    final type = picked.vehicleType?.trim();
+    if (type == null || type.isEmpty) {
+      _snack('Vehicle type is missing for this vehicle. Choose another.');
+      return;
+    }
     setState(() {
       _vehicle = picked;
-      _vehicleType = picked.vehicleType;
+      _vehicleType = type;
+      _vehicleBoundContainerId = _container!.containerId;
       _resolvingVehicleType = false;
     });
   }
 
-  Future<void> _onContainer(String name) async {
-    TaggingContainer? selected;
-    for (final item in _containers) {
-      if (item.containerName == name) selected = item;
+  String _containerChoiceLabel(TaggingContainer item) {
+    var sameName = 0;
+    for (final other in _containers) {
+      if (other.containerName == item.containerName) sameName++;
     }
-    if (selected == null) return;
+    if (sameName < 2) return item.containerName;
+    final site = item.primarySiteName?.trim();
+    if (site != null && site.isNotEmpty) {
+      var sameSite = 0;
+      for (final other in _containers) {
+        if (other.containerName == item.containerName && other.primarySiteName?.trim() == site) {
+          sameSite++;
+        }
+      }
+      if (sameSite < 2) return '${item.containerName} · $site';
+    }
+    return '${item.containerName} · ${item.containerId}';
+  }
+
+  Future<void> _onContainer(String idText) async {
+    final id = int.tryParse(idText);
+    TaggingContainer? selected;
+    if (id != null) {
+      for (final item in _containers) {
+        if (item.containerId == id) {
+          selected = item;
+          break;
+        }
+      }
+    }
+    if (selected == null) {
+      _snack('That container is no longer in this zone. Choose it again.');
+      return;
+    }
     final picked = selected;
+    final token = ++_containerToken;
+    final changed = _container?.containerId != picked.containerId;
+    if (changed) _fixRequest?.cancel();
     setState(() {
       _container = picked;
       _containerType = picked.containerType;
-      _beforePhotos.clear();
       _resolvingType = picked.containerType == null || picked.containerType!.isEmpty;
+      // Always drop the previous vehicle. A new container must get its own pick.
+      _wipeVehicle();
+      if (changed) {
+        _beforePhotos.clear();
+        _afterPhotos.clear();
+        _remarks.clear();
+        _wipeFix();
+      }
     });
+    if (changed) _locate();
     if (!_resolvingType) return;
     final session = AppStateScope.read(context).session;
     if (session == null) {
+      if (!mounted || token != _containerToken) return;
       setState(() => _resolvingType = false);
       return;
     }
     try {
       final detail = await SupervisorApi().containerDetail(session.cnic, picked.containerId);
-      if (!mounted) return;
+      if (!mounted || token != _containerToken || _container?.containerId != picked.containerId) return;
       setState(() {
         _containerType = detail.containerType ?? _containerType;
         _resolvingType = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || token != _containerToken || _container?.containerId != picked.containerId) return;
       setState(() => _resolvingType = false);
     }
   }
@@ -382,12 +557,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _snack('Container type is missing for this container.');
         return;
       }
-      if (_vehicle == null) {
-        _snack('Select a vehicle.');
-        return;
-      }
-      if (_vehicleType == null || _vehicleType!.trim().isEmpty) {
-        _snack('Vehicle type is missing for this vehicle.');
+      if (!_vehicleReady) {
+        _snack('Select the vehicle used for this container.');
         return;
       }
     }
@@ -408,6 +579,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _stampBeforeAndContinue() async {
+    // Stay on Activity. Never navigate to Solid Waste from the before step.
     final selected = _selectedActivity();
     final title = selected?.name ?? _container?.containerName ?? 'Activity before';
     final stamped = <LocalPhoto>[];
@@ -422,30 +594,80 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _step = _ActivityStep.after;
       _afterPhotos.clear();
     });
-    if (!_gpsReady) _locate();
   }
 
-  Future<void> _locate() async {
+  /// Reads a new satellite fix. A failed read leaves the previous fix in place
+  /// so a photo that already locked this container is not replaced by an older stop.
+  Future<bool> _locate({bool announce = true, bool fromPhoto = false}) async {
+    _fixRequest?.cancel();
+    final request = FreshFixRequest();
+    _fixRequest = request;
+    final token = ++_fixToken;
+    if (!mounted) return false;
     setState(() => _locating = true);
     try {
-      final geo = await currentGeoTag();
-      if (!mounted) return;
-      if (geo == null) {
-        setState(() => _locating = false);
-        _snack('Enable live location, then try again.');
-        return;
-      }
+      final geo = await freshGeoTag(request: request);
+      if (!mounted || token != _fixToken || request.cancelled) return false;
       final parts = geo.split(',');
+      final lat = parts.first.trim();
+      final lng = parts.length > 1 ? parts[1].trim() : '';
+      if (lat.isEmpty || lng.isEmpty) {
+        setState(() => _locating = false);
+        if (announce) _snack('Could not read a fresh GPS fix.');
+        return false;
+      }
       setState(() {
         _locating = false;
-        _lat = parts.first.trim();
-        _lng = parts.length > 1 ? parts[1].trim() : null;
+        _lat = lat;
+        _lng = lng;
+        _fixAt = DateTime.now();
+        _fixContainerId = _container?.containerId;
+        _fixZone = _zone;
+        _fixFromPhoto = fromPhoto;
       });
+      return true;
+    } on FreshFixCancelled {
+      return false;
     } on SupervisorException catch (error) {
-      if (!mounted) return;
+      if (!mounted || token != _fixToken || request.cancelled) return false;
       setState(() => _locating = false);
-      _snack(error.message);
+      if (announce) _snack(error.message);
+      return false;
+    } catch (_) {
+      if (!mounted || token != _fixToken || request.cancelled) return false;
+      setState(() => _locating = false);
+      if (announce) {
+        _snack('Could not get a fresh GPS fix. Step into an open area and try again.');
+      }
+      return false;
     }
+  }
+
+  /// Reuse a fix only when it was just taken for this same stop.
+  /// Five seconds is not long enough to reach another container.
+  Future<bool> _ensurePhotoFix() async {
+    final at = _fixAt;
+    final sameStop = at != null &&
+        _gpsReady &&
+        _fixZone == _zone &&
+        (!_isContainerFlow || _fixContainerId == _container?.containerId) &&
+        DateTime.now().difference(at) <= const Duration(seconds: 5);
+    if (sameStop) {
+      if (!_fixFromPhoto && mounted) setState(() => _fixFromPhoto = true);
+      return true;
+    }
+    return _locate(fromPhoto: true);
+  }
+
+  Future<bool> _captureFixForSave() async {
+    final fallback = _recentFixUsable();
+    final ok = await _locate(announce: !fallback);
+    if (ok) return true;
+    if (fallback && mounted) {
+      _snack('Live GPS did not update. Saved the fix from this visit.');
+      return true;
+    }
+    return false;
   }
 
   String _stampedName(String? name, {String fallback = 'photo.jpg'}) {
@@ -480,11 +702,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _onBeforePhoto(LocalPhoto photo) async {
-    if (!_gpsReady) {
-      _snack('Fetch your current GPS location first.');
+    final max = _isPhotosOnlyFlow ? _maxPlainPhotos : _maxBeforePhotos;
+    if (_beforePhotos.length >= max) {
+      _snack('You can add up to $max pictures.');
       return;
     }
-    final max = _isPhotosOnlyFlow ? _maxPlainPhotos : _maxBeforePhotos;
+    final located = await _ensurePhotoFix();
+    if (!mounted || !located) return;
     if (_beforePhotos.length >= max) {
       _snack('You can add up to $max pictures.');
       return;
@@ -498,10 +722,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _onAfterPhoto(LocalPhoto photo) async {
-    if (!_gpsReady) {
-      _snack('Fetch your current GPS location first.');
+    if (_afterPhotos.length >= _maxAfterPhotos) {
+      _snack('You can add up to $_maxAfterPhotos after pictures.');
       return;
     }
+    final located = await _ensurePhotoFix();
+    if (!mounted || !located) return;
     if (_afterPhotos.length >= _maxAfterPhotos) {
       _snack('You can add up to $_maxAfterPhotos after pictures.');
       return;
@@ -552,9 +778,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final selected = _selectedActivity();
     final containerOk = !_isContainerFlow ||
         (_container != null &&
-            _vehicle != null &&
-            (_containerType?.trim().isNotEmpty ?? false) &&
-            (_vehicleType?.trim().isNotEmpty ?? false));
+            _vehicleReady &&
+            (_containerType?.trim().isNotEmpty ?? false));
     if (selected == null ||
         _zone == null ||
         _zone!.isEmpty ||
@@ -596,8 +821,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return;
     }
 
+    if (_isContainerFlow && !_vehicleReady) {
+      _snack('Select the vehicle used for this container.');
+      setState(() => _step = _ActivityStep.before);
+      return;
+    }
+
     setState(() => _submitting = true);
     try {
+      if (!await _captureFixForSave()) return;
+      if (!mounted) return;
+      // Re-check after the GPS wait — container/vehicle can change meanwhile.
+      if (_isContainerFlow && !_vehicleReady) {
+        _snack('Select the vehicle used for this container.');
+        setState(() => _step = _ActivityStep.before);
+        return;
+      }
       final stampedBefore = <LocalPhoto>[];
       for (final photo in before) {
         stampedBefore.add(await _stampPhoto(photo, selected.name));
@@ -678,7 +917,28 @@ class _ActivityScreenState extends State<ActivityScreen> {
       AppStateScope.read(context).noteWasteSynced();
 
       if (!mounted) return;
-      _snack(saved.message ?? 'Activity record saved.');
+      // Only leave Activity after a successful save. Before/after photo steps
+      // never call this path, so they stay on this screen.
+      final message = (saved.message ?? '').trim().isEmpty
+          ? 'Activity saved successfully.'
+          : saved.message!.trim();
+      AppStateScope.read(context).setFlashNotice(message);
+      _fixRequest?.cancel();
+      setState(() {
+        _step = _ActivityStep.before;
+        _zone = null;
+        _uc = null;
+        _container = null;
+        _containerType = null;
+        _wipeVehicle();
+        _beforePhotos.clear();
+        _afterPhotos.clear();
+        _containers = const [];
+        _error = null;
+        _remarks.clear();
+        _wipeFix();
+      });
+      if (!mounted) return;
       context.go(AppRoutes.waste);
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -735,9 +995,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ),
       ],
       bottom: PrimaryButton(
-        label: photosOnly ? 'Submit' : 'Save & continue',
-        loading: photosOnly && _submitting,
-        onPressed: _loadingCatalog || (photosOnly && _submitting) ? null : _goToAfter,
+        label: photosOnly ? 'Submit' : 'Continue to after photo',
+        loading: _locating || (photosOnly && _submitting),
+        onPressed: _loadingCatalog || _locating || (photosOnly && _submitting) ? null : _goToAfter,
       ),
       body: _loadingCatalog
           ? const Padding(
@@ -761,7 +1021,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ModulePanel(
                   title: 'Details',
                   subtitle: _isContainerFlow
-                      ? 'Container type and vehicle type fill automatically from your selection.'
+                      ? 'Pick the container and vehicle for this visit. Changing the container clears the vehicle, remarks and location.'
                       : 'Pick a zone. Union council is optional.',
                   child: Column(
                     children: [
@@ -792,8 +1052,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                                 : (_containers.isEmpty
                                     ? 'No containers in this zone'
                                     : 'Select container'),
-                            items: [for (final item in _containers) item.containerName],
-                            value: _container?.containerName,
+                            items: [for (final item in _containers) _containerChoiceLabel(item)],
+                            values: [for (final item in _containers) '${item.containerId}'],
+                            value: _container == null ? null : '${_container!.containerId}',
                             enabled: _zone != null && _containers.isNotEmpty,
                             onChanged: _onContainer,
                           ),
@@ -809,10 +1070,20 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         else
                           DropdownField(
                             label: 'Vehicle',
-                            hint: _vehicles.isEmpty ? 'No vehicles available' : 'Select vehicle',
-                            items: [for (final item in _vehicles) item.number],
-                            value: _vehicle?.number,
-                            enabled: _vehicles.isNotEmpty,
+                            hint: _zone == null
+                                ? 'Select zone first'
+                                : (_container == null
+                                    ? 'Select container first'
+                                    : (_vehicles.isEmpty
+                                        ? 'No vehicles available'
+                                        : 'Select vehicle for this container')),
+                            items: [for (final item in _vehicles) _vehicleChoiceLabel(item)],
+                            values: _vehicleChoiceValues(),
+                            value: _vehicleReady ? _selectedVehicleValue() : null,
+                            enabled: _zone != null &&
+                                _container != null &&
+                                _vehicles.isNotEmpty &&
+                                !_loadingVehicles,
                             onChanged: _onVehicle,
                           ),
                         const SizedBox(height: 14),
@@ -849,9 +1120,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 const SizedBox(height: 14),
                 ModulePanel(
                   title: 'Live location',
-                  subtitle: photosOnly
-                      ? 'GPS is stamped on each picture.'
-                      : 'GPS is stamped on the before picture (same as after).',
+                  subtitle: 'Each photo and the saved record take a new GPS fix. A previous stop is not reused.',
                   child: LocationCard(
                     latitude: _lat,
                     longitude: _lng,
@@ -866,9 +1135,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       ? 'At least 1, up to $_maxPlainPhotos GPS-stamped photos.'
                       : 'Up to $_maxBeforePhotos GPS-stamped photos before the activity.',
                   child: Opacity(
-                    opacity: !_detailsReady || !_gpsReady ? 0.55 : 1,
+                    opacity: !_detailsReady || !_gpsReady || _locating ? 0.55 : 1,
                     child: IgnorePointer(
-                      ignoring: !_detailsReady || !_gpsReady,
+                      ignoring: !_detailsReady || !_gpsReady || _locating || _submitting,
                       child: PhotoUploader(
                         title: photosOnly ? 'Photos' : 'Before',
                         hint: photosOnly ? 'Take photo' : 'Take before photo',
@@ -876,11 +1145,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             ? (_isContainerFlow
                                 ? 'Select container and vehicle first.'
                                 : 'Select a zone first.')
-                            : (_gpsReady
-                                ? (photosOnly
-                                    ? 'Up to $_maxPlainPhotos photos. Each is stamped with lat/long.'
-                                    : 'Up to $_maxBeforePhotos photos. Each is stamped with lat/long.')
-                                : 'Fetch GPS first, then add pictures.'),
+                            : (_locating
+                                ? 'Reading a fresh GPS fix…'
+                                : (_gpsReady
+                                    ? 'Each photo is stamped with a new GPS fix from where you are standing.'
+                                    : 'Fetch GPS first, then add pictures.')),
                         maxPhotos: photosOnly ? _maxPlainPhotos : _maxBeforePhotos,
                         photos: _beforePhotos,
                         onAdd: _onBeforePhoto,
@@ -895,7 +1164,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   const SizedBox(height: 14),
                   ModulePanel(
                     title: 'Remarks',
-                    subtitle: 'Optional notes for this activity.',
+                    subtitle: 'Notes for this visit only. Changing the container or zone clears them.',
                     child: TextInput(
                       label: 'Remarks',
                       controller: _remarks,
@@ -926,8 +1195,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
       ],
       bottom: PrimaryButton(
         label: 'Submit',
-        loading: _submitting,
-        onPressed: _submitting ? null : _submit,
+        loading: _submitting || _locating,
+        onPressed: _submitting || _locating ? null : _submit,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -959,7 +1228,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   const SizedBox(height: 10),
                   InfoCard(
                     label: 'Container',
-                    value: _container?.containerName ?? '—',
+                    value: _container == null ? '—' : _containerChoiceLabel(_container!),
                     icon: Icons.delete_outline_rounded,
                   ),
                   if (_containerType != null && _containerType!.isNotEmpty) ...[
@@ -973,7 +1242,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   const SizedBox(height: 10),
                   InfoCard(
                     label: 'Vehicle',
-                    value: _vehicle?.number ?? '—',
+                    value: _vehicle == null ? '—' : _vehicleChoiceLabel(_vehicle!),
                     icon: Icons.directions_car_outlined,
                   ),
                   if (_vehicleType != null && _vehicleType!.isNotEmpty) ...[
@@ -998,7 +1267,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           const SizedBox(height: 14),
           ModulePanel(
             title: 'Live location',
-            subtitle: 'Device GPS is saved with this activity.',
+            subtitle: 'Submit reads GPS again. It does not keep the previous container’s pin.',
             child: LocationCard(
               latitude: _lat,
               longitude: _lng,
@@ -1011,15 +1280,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
             title: 'After pictures',
             subtitle: 'Up to $_maxAfterPhotos GPS-stamped photos after the activity.',
             child: Opacity(
-              opacity: _gpsReady ? 1 : 0.55,
+              opacity: !_gpsReady || _locating ? 0.55 : 1,
               child: IgnorePointer(
-                ignoring: !_gpsReady,
+                ignoring: !_gpsReady || _locating || _submitting,
                 child: PhotoUploader(
                   title: 'After',
                   hint: 'Take after photo',
-                  caption: _gpsReady
-                      ? 'Up to $_maxAfterPhotos photos. Each is stamped with lat/long.'
-                      : 'Fetch GPS first, then add after pictures.',
+                  caption: _locating
+                      ? 'Reading a fresh GPS fix…'
+                      : (_gpsReady
+                          ? 'Each photo is stamped with a new GPS fix from where you are standing.'
+                          : 'Fetch GPS first, then add after pictures.'),
                   maxPhotos: _maxAfterPhotos,
                   photos: _afterPhotos,
                   onAdd: _onAfterPhoto,
@@ -1033,7 +1304,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           const SizedBox(height: 14),
           ModulePanel(
             title: 'Remarks',
-            subtitle: 'Optional notes for this activity.',
+            subtitle: 'Notes for this visit only. Changing the container or zone clears them.',
             child: TextInput(
               label: 'Remarks',
               controller: _remarks,

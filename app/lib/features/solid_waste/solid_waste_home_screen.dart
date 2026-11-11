@@ -19,6 +19,20 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
   void initState() {
     super.initState();
     WasteCatalog.ensureLoaded(cnic: AppStateScope.read(context).session?.cnic);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final message = AppStateScope.read(context).takeFlashNotice();
+      if (message == null || message.isEmpty) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+    });
   }
 
   void _openTab(int index) {

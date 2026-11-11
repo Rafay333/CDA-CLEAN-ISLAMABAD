@@ -13,6 +13,7 @@ class DropdownField extends StatelessWidget {
     required this.label,
     required this.hint,
     required this.items,
+    this.values,
     this.value,
     this.onChanged,
     this.errorText,
@@ -22,10 +23,31 @@ class DropdownField extends StatelessWidget {
   final String label;
   final String hint;
   final List<String> items;
+
+  /// Stable ids, one per [items] entry. The sheet still shows [items].
+  /// [value] and [onChanged] use these ids so two rows with the same label
+  /// cannot collapse into one record.
+  final List<String>? values;
   final String? value;
   final ValueChanged<String>? onChanged;
   final String? errorText;
   final bool enabled;
+
+  List<String>? get _ids {
+    final ids = values;
+    if (ids == null || ids.length != items.length) return null;
+    return ids;
+  }
+
+  String? get _closedLabel {
+    final current = value;
+    if (current == null || current.isEmpty) return null;
+    final ids = _ids;
+    if (ids == null) return current;
+    final index = ids.indexOf(current);
+    if (index < 0) return null;
+    return items[index];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +76,9 @@ class DropdownField extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      displayOr(value, hint),
+                      displayOr(_closedLabel, hint),
                       style: AppType.body.copyWith(
-                        color: value == null || value!.isEmpty
+                        color: _closedLabel == null
                             ? AppColors.disabledText
                             : AppColors.textPrimary,
                       ),
@@ -87,7 +109,12 @@ class DropdownField extends StatelessWidget {
     final selected = await showAppSheet<String>(
       context,
       builder: (context) {
-        return _OptionSheet(title: label, items: items, selected: value);
+        return _OptionSheet(
+          title: label,
+          items: items,
+          values: _ids,
+          selected: value,
+        );
       },
     );
     if (selected != null) onChanged?.call(selected);
@@ -99,10 +126,12 @@ class _OptionSheet extends StatefulWidget {
     required this.title,
     required this.items,
     required this.selected,
+    this.values,
   });
 
   final String title;
   final List<String> items;
+  final List<String>? values;
   final String? selected;
 
   @override
@@ -135,11 +164,10 @@ class _OptionSheetState extends State<_OptionSheet> {
     }
 
     final query = _query.text.trim().toLowerCase();
-    final visible = query.isEmpty
-        ? widget.items
-        : widget.items
-              .where((item) => item.toLowerCase().contains(query))
-              .toList();
+    final visible = <int>[
+      for (var i = 0; i < widget.items.length; i++)
+        if (query.isEmpty || widget.items[i].toLowerCase().contains(query)) i,
+    ];
     final media = MediaQuery.of(context);
     final maxHeight = (media.size.height - media.viewInsets.bottom) * 0.42;
     final height = visible.isEmpty
@@ -191,8 +219,13 @@ class _OptionSheetState extends State<_OptionSheet> {
                     separatorBuilder: (_, _) =>
                         const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (context, index) {
-                      final item = visible[index];
-                      final chosen = item == widget.selected;
+                      final itemIndex = visible[index];
+                      final item = widget.items[itemIndex];
+                      final ids = widget.values;
+                      final id = ids != null && itemIndex < ids.length
+                          ? ids[itemIndex]
+                          : item;
+                      final chosen = id == widget.selected;
                       return ListTile(
                         title: Text(item, style: AppType.body),
                         trailing: chosen
@@ -201,7 +234,7 @@ class _OptionSheetState extends State<_OptionSheet> {
                                 color: AppColors.emerald,
                               )
                             : null,
-                        onTap: () => Navigator.of(context).pop(item),
+                        onTap: () => Navigator.of(context).pop(id),
                       );
                     },
                   ),

@@ -208,6 +208,7 @@ class AppState extends ChangeNotifier {
   int pendingResolveCount = 0;
   List<PendingResolve> pendingResolves = const [];
   int unreadNotices = 0;
+  String? _flashNotice;
 
   Future<void> get ready => _ready;
 
@@ -240,6 +241,19 @@ class AppState extends ChangeNotifier {
   void noteWasteSynced() {
     wasteSyncedAt = waste.savedAt ?? DateTime.now();
     notifyListeners();
+  }
+
+  /// One-shot banner after a successful save (e.g. Activity → Solid Waste home).
+  void setFlashNotice(String message) {
+    final text = message.trim();
+    if (text.isEmpty) return;
+    _flashNotice = text;
+  }
+
+  String? takeFlashNotice() {
+    final text = _flashNotice;
+    _flashNotice = null;
+    return text;
   }
 
   void noteComplaintSynced() {

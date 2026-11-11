@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1743,6 +1745,136 @@ Future<String?> currentGeoTag() async {
     rethrow;
   } catch (_) {
     return null;
+  }
+}
+
+/// Cancels an in-flight [freshGeoTag] so a slow fix from the previous stop
+/// cannot be written onto the next container.
+class FreshFixRequest {
+  var _cancelled = false;
+  void Function()? _onCancel;
+
+  bool get cancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    final notify = _onCancel;
+    _onCancel = null;
+    notify?.call();
+  }
+}
+
+class FreshFixCancelled implements Exception {}
+
+LocationSettings _freshLocationSettings() {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    return AndroidSettings(
+      accuracy: LocationAccuracy.best,
+      forceLocationManager: true,
+      intervalDuration: const Duration(seconds: 1),
+      distanceFilter: 0,
+    );
+  }
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    return AppleSettings(
+      accuracy: LocationAccuracy.best,
+      activityType: ActivityType.other,
+      distanceFilter: 0,
+      pauseLocationUpdatesAutomatically: false,
+      allowBackgroundLocationUpdates: false,
+    );
+  }
+  return const LocationSettings(
+    accuracy: LocationAccuracy.best,
+    distanceFilter: 0,
+  );
+}
+
+/// A satellite fix taken for this request.
+///
+/// Medium-accuracy reads often return the phone's last network point, so two
+/// bins minutes apart were saved with the identical coordinates. This waits
+/// for a fix whose timestamp belongs to this request and whose accuracy is
+/// tight enough to tell one container from the next.
+Future<String> freshGeoTag({FreshFixRequest? request}) async {
+  await ensureLiveLocationEnabled();
+  if (request?.cancelled ?? false) throw FreshFixCancelled();
+
+  final started = DateTime.now().toUtc();
+  final completer = Completer<Position>();
+  StreamSubscription<Position>? sub;
+  Timer? relax;
+  Position? best;
+
+  void succeed(Position position) {
+    if (!completer.isCompleted) completer.complete(position);
+  }
+
+  void fail(Object error) {
+    if (!completer.isCompleted) completer.completeError(error);
+  }
+
+  request?._onCancel = () => fail(FreshFixCancelled());
+  if (request?.cancelled ?? false) {
+    request?._onCancel = null;
+    throw FreshFixCancelled();
+  }
+
+  try {
+    sub = Geolocator.getPositionStream(locationSettings: _freshLocationSettings()).listen(
+      (position) {
+        if (request?.cancelled ?? false) {
+          fail(FreshFixCancelled());
+          return;
+        }
+        if (position.isMocked) {
+          fail(
+            SupervisorException(
+              'Fake GPS detected. Turn off any fake-location app and try again.',
+            ),
+          );
+          return;
+        }
+        final stamp = position.timestamp.toUtc();
+        if (stamp.isBefore(started.subtract(const Duration(seconds: 20)))) return;
+        final accuracy = position.accuracy;
+        if (accuracy <= 0) return;
+        if (best == null || accuracy < best!.accuracy) best = position;
+        if (accuracy <= 60) succeed(position);
+      },
+      onError: (Object error, StackTrace _) {
+        if (error is FreshFixCancelled || error is SupervisorException) {
+          fail(error);
+          return;
+        }
+        fail(
+          SupervisorException(
+            'Could not get a fresh GPS fix. Step into an open area and try again.',
+          ),
+        );
+      },
+    );
+
+    relax = Timer(const Duration(seconds: 12), () {
+      if (request?.cancelled ?? false) {
+        fail(FreshFixCancelled());
+        return;
+      }
+      final candidate = best;
+      if (candidate != null && candidate.accuracy <= 120) succeed(candidate);
+    });
+
+    final position = await completer.future.timeout(const Duration(seconds: 25));
+    return '${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}';
+  } on TimeoutException {
+    throw SupervisorException(
+      'Could not get a fresh GPS fix. Step into an open area and try again.',
+    );
+  } finally {
+    relax?.cancel();
+    request?._onCancel = null;
+    await sub?.cancel();
   }
 }
 
