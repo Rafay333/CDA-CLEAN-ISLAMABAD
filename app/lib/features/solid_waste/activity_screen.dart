@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -32,6 +33,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   /// Vehicle is valid only for this container. Stops a previous visit's
   /// vehicle from being submitted with a different container.
   int? _vehicleBoundContainerId;
+  DateTime? _vehiclePickedAt;
   final List<LocalPhoto> _beforePhotos = [];
   final List<LocalPhoto> _afterPhotos = [];
   String? _lat;
@@ -44,6 +46,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
   int _containerToken = 0;
   int _fixToken = 0;
   FreshFixRequest? _fixRequest;
+
+  /// Frozen at "Continue to after photo". Submit uses only this snapshot so a
+  /// leftover vehicle/remarks cannot appear after the before step.
+  _ActivityLock? _lock;
 
   static const _maxBeforePhotos = 2;
   static const _maxAfterPhotos = 2;
@@ -60,6 +66,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   static const _inventorySize8 = '8 m3';
 
   late final TextEditingController _remarks;
+  /// True only after the worker types in remarks for the current stop.
+  /// Stops a leftover "cl" from a previous container being submitted again.
+  bool _remarksEntered = false;
 
   List<CatalogActivity> _activities = const [];
   List<String> _zones = const [];
@@ -105,24 +114,91 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _vehicle = null;
     _vehicleType = null;
     _vehicleBoundContainerId = null;
+    _vehiclePickedAt = null;
+  }
+
+  void _wipeRemarks() {
+    _remarks.clear();
+    _remarksEntered = false;
+  }
+
+  void _wipeLock() {
+    _lock = null;
+  }
+
+  void _wipeVisitFields() {
+    _wipeVehicle();
+    _wipeRemarks();
+    _wipeFix();
+    _wipeLock();
+  }
+
+  String _remarksForSave() {
+    // If the worker never typed remarks for this container, do not send a
+    // leftover value from a previous stop (the 5-day "cl" pattern).
+    if (!_remarksEntered) return '';
+    return _remarks.text.trim();
+  }
+
+  bool _vehiclePickedAfterLastSave() {
+    final pickedAt = _vehiclePickedAt;
+    if (pickedAt == null) return false;
+    final lastAt = AppStateScope.read(context).lastActivitySavedAt;
+    if (lastAt == null) return true;
+    // Must choose the vehicle again after the previous successful save.
+    return pickedAt.isAfter(lastAt);
+  }
+
+  bool _sameCarAsLast() {
+    final lastVehicle = (AppStateScope.read(context).lastActivityVehicleNumber ?? '').trim();
+    final vehicle = (_vehicle?.number ?? '').trim();
+    if (lastVehicle.isEmpty || vehicle.isEmpty) return false;
+    return vehicle == lastVehicle;
   }
 
   bool get _vehicleReady =>
       _vehicle != null &&
       (_vehicleType?.trim().isNotEmpty ?? false) &&
       _vehicleBoundContainerId != null &&
-      _vehicleBoundContainerId == _container?.containerId;
+      _vehicleBoundContainerId == _container?.containerId &&
+      _vehiclePickedAfterLastSave();
 
-  /// Photo fixes can back a submit for a few minutes. A preview fix cannot,
-  /// or the pin from the previous stop would be saved again.
+  /// Only a very recent fix for THIS container can back a failed live read.
+  /// A longer window was letting a stuck phone pin be saved again.
   bool _recentFixUsable() {
     final at = _fixAt;
     if (at == null || !_gpsReady) return false;
     final age = DateTime.now().difference(at);
     if (_fixZone != _zone) return false;
     if (_isContainerFlow && _fixContainerId != _container?.containerId) return false;
-    if (_fixFromPhoto) return age <= const Duration(minutes: 3);
-    return age <= const Duration(seconds: 20);
+    if (_fixFromPhoto) return age <= const Duration(seconds: 45);
+    return age <= const Duration(seconds: 15);
+  }
+
+  /// Previous successful save on this phone — used to refuse a stuck GPS cache.
+  ({String? lat, String? lng, int? containerId, DateTime? at}) _lastSavedPin() {
+    final state = AppStateScope.read(context);
+    return (
+      lat: state.lastActivityLatitude,
+      lng: state.lastActivityLongitude,
+      containerId: state.lastActivityContainerId,
+      at: state.lastActivitySavedAt,
+    );
+  }
+
+  bool _shouldAvoidLastPin() {
+    if (!_isContainerFlow || _container == null) return false;
+    final last = _lastSavedPin();
+    final at = last.at;
+    if (at == null || last.lat == null || last.lng == null) return false;
+    if (DateTime.now().difference(at) > const Duration(hours: 2)) return false;
+    // Same container can keep the same pin. A different container must move.
+    return last.containerId != _container!.containerId;
+  }
+
+  bool _pinMatchesLastSave() {
+    final last = _lastSavedPin();
+    return sameGeoTag(_lat, _lng, last.lat, last.lng);
   }
 
   bool get _gpsReady =>
@@ -174,6 +250,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
             CatalogActivity(code: item.code, name: item.activity, unlimitedPictures: false),
         ];
       }
+      final containerOnly = session != null && !session.canUseOtherFieldRecords;
+      if (containerOnly) {
+        activities = [
+          for (final item in activities)
+            if (isContainerClearanceActivity(code: item.code, name: item.name)) item,
+        ];
+        if (activities.isEmpty) {
+          activities = const [
+            CatalogActivity(
+              code: 'containers',
+              name: 'Container Collection/Clearance',
+              unlimitedPictures: false,
+            ),
+          ];
+        }
+      }
       if (!mounted) return;
       var vehicles = List<CatalogVehicle>.from(WasteCatalog.vehicles);
       if (vehicles.isEmpty && session != null) {
@@ -187,6 +279,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _zones = WasteCatalog.zones;
         _vehicles = vehicles;
         _loadingCatalog = false;
+        if (containerOnly && activities.length == 1) _activity = activities.first.name;
       });
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -216,13 +309,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _uc = null;
       _container = null;
       _containerType = null;
-      _wipeVehicle();
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
       _error = null;
-      _remarks.clear();
-      _wipeFix();
+      _wipeVisitFields();
     });
     _locate();
   }
@@ -243,13 +334,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _uc = null;
       _container = null;
       _containerType = null;
-      _wipeVehicle();
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
       _error = null;
-      _remarks.clear();
-      _wipeFix();
+      _wipeVisitFields();
     });
     _locate();
   }
@@ -266,15 +355,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _uc = null;
       _container = null;
       _containerType = null;
-      _wipeVehicle();
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
       _loadingContainers = _isContainerFlow;
       _loadingVehicles = _isContainerFlow;
       _error = null;
-      _remarks.clear();
-      _wipeFix();
+      _wipeVisitFields();
     });
     _locate();
     if (!_isContainerFlow) {
@@ -322,11 +409,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
         if (_container != null && !rows.any((item) => item.containerId == _container!.containerId)) {
           _container = null;
           _containerType = null;
-          _wipeVehicle();
           _beforePhotos.clear();
           _afterPhotos.clear();
-          _remarks.clear();
-          _wipeFix();
+          _wipeVisitFields();
         }
       });
       if (rows.isEmpty) _snack('No containers found for $value.');
@@ -367,6 +452,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _loadingVehicles = false;
       if (_vehicle != null && (!_vehicleStillListed(_vehicle!) || !_vehicleReady)) {
         _wipeVehicle();
+        _wipeLock();
       }
     });
   }
@@ -458,7 +544,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _vehicle = picked;
       _vehicleType = type;
       _vehicleBoundContainerId = _container!.containerId;
+      _vehiclePickedAt = DateTime.now();
       _resolvingVehicleType = false;
+      _wipeLock();
     });
   }
 
@@ -504,12 +592,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _container = picked;
       _containerType = picked.containerType;
       _resolvingType = picked.containerType == null || picked.containerType!.isEmpty;
-      // Always drop the previous vehicle. A new container must get its own pick.
+      // Never inherit another stop's vehicle/remarks. GPS only resets when the
+      // container actually changes (re-tapping the same row must not blank GPS).
       _wipeVehicle();
+      _wipeRemarks();
+      _wipeLock();
       if (changed) {
         _beforePhotos.clear();
         _afterPhotos.clear();
-        _remarks.clear();
         _wipeFix();
       }
     });
@@ -580,6 +670,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   Future<void> _stampBeforeAndContinue() async {
     // Stay on Activity. Never navigate to Solid Waste from the before step.
+    if (_isContainerFlow && !_vehicleReady) {
+      _snack('Select the vehicle used for this container.');
+      return;
+    }
     final selected = _selectedActivity();
     final title = selected?.name ?? _container?.containerName ?? 'Activity before';
     final stamped = <LocalPhoto>[];
@@ -587,12 +681,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
       stamped.add(await _stampPhoto(photo, title));
     }
     if (!mounted) return;
+    if (!_remarksEntered) _remarks.clear();
+    final lock = _isContainerFlow
+        ? _ActivityLock(
+            containerId: _container!.containerId,
+            containerName: _container!.containerName,
+            containerType: _containerType,
+            vehicleId: _vehicle!.id,
+            vehicleNumber: _vehicle!.number,
+            vehicleType: _vehicleType!,
+          )
+        : null;
     setState(() {
       _beforePhotos
         ..clear()
         ..addAll(stamped);
       _step = _ActivityStep.after;
       _afterPhotos.clear();
+      _lock = lock;
     });
   }
 
@@ -605,8 +711,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final token = ++_fixToken;
     if (!mounted) return false;
     setState(() => _locating = true);
+    final avoid = _shouldAvoidLastPin() ? _lastSavedPin() : (lat: null, lng: null, containerId: null, at: null);
     try {
-      final geo = await freshGeoTag(request: request);
+      final geo = await freshGeoTag(
+        request: request,
+        avoidLatitude: avoid.lat,
+        avoidLongitude: avoid.lng,
+      );
       if (!mounted || token != _fixToken || request.cancelled) return false;
       final parts = geo.split(',');
       final lat = parts.first.trim();
@@ -614,6 +725,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       if (lat.isEmpty || lng.isEmpty) {
         setState(() => _locating = false);
         if (announce) _snack('Could not read a fresh GPS fix.');
+        return false;
+      }
+      if (_shouldAvoidLastPin() && sameGeoTag(lat, lng, avoid.lat, avoid.lng)) {
+        setState(() => _locating = false);
+        if (announce) {
+          _snack(
+            'GPS is still on the previous container. Move closer to this bin in the open and try again.',
+          );
+        }
         return false;
       }
       setState(() {
@@ -627,6 +747,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       });
       return true;
     } on FreshFixCancelled {
+      if (mounted && token == _fixToken) setState(() => _locating = false);
       return false;
     } on SupervisorException catch (error) {
       if (!mounted || token != _fixToken || request.cancelled) return false;
@@ -664,6 +785,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final ok = await _locate(announce: !fallback);
     if (ok) return true;
     if (fallback && mounted) {
+      // Never reuse a pin that already belongs to a different saved container.
+      if (_shouldAvoidLastPin() && _pinMatchesLastSave()) {
+        _snack(
+          'GPS is still on the previous container. Move closer to this bin in the open and try again.',
+        );
+        return false;
+      }
       _snack('Live GPS did not update. Saved the fix from this visit.');
       return true;
     }
@@ -776,21 +904,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return;
     }
     final selected = _selectedActivity();
+    if (selected == null) {
+      _snack('Start again from the activity details.');
+      setState(() => _step = _ActivityStep.before);
+      return;
+    }
     final containerOk = !_isContainerFlow ||
         (_container != null &&
             _vehicleReady &&
             (_containerType?.trim().isNotEmpty ?? false));
-    if (selected == null ||
-        _zone == null ||
+    if (_zone == null ||
         _zone!.isEmpty ||
         !containerOk ||
         uploadPhotos(_beforePhotos).isEmpty) {
       _snack('Start again from the activity details.');
       setState(() => _step = _ActivityStep.before);
-      return;
-    }
-    if (!_gpsReady) {
-      _snack('Fetch your current GPS location.');
       return;
     }
     if (uploadPhotos(_afterPhotos).isEmpty) {
@@ -801,11 +929,50 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _snack('You can add up to $_maxAfterPhotos after pictures.');
       return;
     }
+    // Fresh GPS first, then confirm the exact values that will be saved.
+    if (!await _captureFixForSave()) return;
+    if (!mounted) return;
+    if (_isContainerFlow && _shouldAvoidLastPin() && _pinMatchesLastSave()) {
+      _wipeFix();
+      _snack(
+        'GPS pin matches the previous container. Stand at this bin, tap Get Live Location, then submit again.',
+      );
+      setState(() => _step = _ActivityStep.before);
+      return;
+    }
+    if (_isContainerFlow) {
+      final lock = _lock;
+      if (!_vehicleReady ||
+          lock == null ||
+          lock.containerId != _container?.containerId ||
+          lock.vehicleNumber != _vehicle?.number ||
+          lock.vehicleId != _vehicle?.id) {
+        _wipeLock();
+        _snack('Start again from the activity details and confirm the vehicle.');
+        setState(() => _step = _ActivityStep.before);
+        return;
+      }
+      final remarks = _remarksForSave();
+      final confirmed = await ConfirmationSheet.show(
+        context,
+        title: 'Confirm this container',
+        message:
+            'Container: ${lock.containerName}\n'
+            'Vehicle: ${lock.vehicleNumber} · ${lock.vehicleType}\n'
+            'GPS: ${_lat ?? '—'}, ${_lng ?? '—'}\n'
+            'Remarks: ${remarks.isEmpty ? '(none)' : remarks}\n\n'
+            'If the vehicle is wrong, tap Cancel and choose the correct one.',
+        confirmLabel: 'Submit',
+        cancelLabel: 'Cancel',
+      );
+      if (!confirmed || !mounted) return;
+    }
     await _saveActivity(
       selected: selected,
       before: _beforePhotos,
       after: _afterPhotos,
       photosOnly: false,
+      alreadyFixed: true,
     );
   }
 
@@ -814,10 +981,16 @@ class _ActivityScreenState extends State<ActivityScreen> {
     required List<LocalPhoto> before,
     required List<LocalPhoto> after,
     required bool photosOnly,
+    bool alreadyFixed = false,
   }) async {
     final session = AppStateScope.read(context).session;
     if (session == null) {
       _snack('Sign in again.');
+      return;
+    }
+    if (!session.canUseOtherFieldRecords &&
+        !isContainerClearanceActivity(code: selected.code, name: selected.name)) {
+      _snack('This activity is not available for your account.');
       return;
     }
 
@@ -829,14 +1002,72 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     setState(() => _submitting = true);
     try {
-      if (!await _captureFixForSave()) return;
-      if (!mounted) return;
+      if (!alreadyFixed) {
+        if (!await _captureFixForSave()) return;
+        if (!mounted) return;
+      }
       // Re-check after the GPS wait — container/vehicle can change meanwhile.
       if (_isContainerFlow && !_vehicleReady) {
         _snack('Select the vehicle used for this container.');
         setState(() => _step = _ActivityStep.before);
         return;
       }
+      // Same GPS pin on a different container = stuck/leftover location.
+      // Same truck is allowed only if he picks it again after the last save.
+      if (_isContainerFlow && _shouldAvoidLastPin() && _pinMatchesLastSave()) {
+        _wipeFix();
+        _snack(
+          'GPS pin matches the previous container. Stand at this bin, tap Get Live Location, then submit again.',
+        );
+        setState(() => _step = _ActivityStep.before);
+        return;
+      }
+      if (_isContainerFlow &&
+          _shouldAvoidLastPin() &&
+          _sameCarAsLast() &&
+          !_vehiclePickedAfterLastSave()) {
+        _wipeVisitFields();
+        _snack(
+          'Previous vehicle was still filled. Select the vehicle for this container again.',
+        );
+        setState(() => _step = _ActivityStep.before);
+        return;
+      }
+      if (_isContainerFlow && !_vehiclePickedAfterLastSave()) {
+        _wipeVehicle();
+        _wipeLock();
+        _snack('Select the vehicle again for this container.');
+        setState(() => _step = _ActivityStep.before);
+        return;
+      }
+
+      _ActivityLock? locked;
+      if (_isContainerFlow) {
+        final lock = _lock;
+        if (lock == null ||
+            lock.containerId != _container?.containerId ||
+            lock.vehicleNumber != _vehicle?.number ||
+            lock.vehicleId != _vehicle?.id ||
+            !_vehicleReady) {
+          _wipeLock();
+          _snack('Start again from the activity details and confirm the vehicle.');
+          setState(() => _step = _ActivityStep.before);
+          return;
+        }
+        locked = lock;
+      }
+
+      final saveContainerId = locked?.containerId;
+      final saveContainerName = locked?.containerName;
+      final saveContainerType = locked?.containerType;
+      final saveVehicleId = locked?.vehicleId;
+      final saveVehicleNumber = locked?.vehicleNumber;
+      final saveVehicleType = locked?.vehicleType;
+      // Remarks only if typed for this stop — never a leftover "cl".
+      final savedRemarks = _remarksForSave();
+      final saveLat = _lat!.trim();
+      final saveLng = _lng!.trim();
+
       final stampedBefore = <LocalPhoto>[];
       for (final photo in before) {
         stampedBefore.add(await _stampPhoto(photo, selected.name));
@@ -875,16 +1106,16 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ucCode: _isContainerFlow
             ? null
             : ((_uc != null && _uc!.isNotEmpty) ? _uc : null),
-        containerId: _isContainerFlow ? _container!.containerId : null,
-        containerName: _isContainerFlow ? _container!.containerName : null,
-        containerType: _isContainerFlow ? _containerType : null,
-        vehicleId: _isContainerFlow ? _vehicle!.id : null,
-        vehicleNumber: _isContainerFlow ? _vehicle!.number : null,
-        vehicleType: _isContainerFlow ? _vehicleType : null,
-        latitude: _lat,
-        longitude: _lng,
-        geoTag: '${_lat!.trim()},${_lng!.trim()}',
-        remarks: _remarks.text.trim(),
+        containerId: saveContainerId,
+        containerName: saveContainerName,
+        containerType: saveContainerType,
+        vehicleId: saveVehicleId,
+        vehicleNumber: saveVehicleNumber,
+        vehicleType: saveVehicleType,
+        latitude: saveLat,
+        longitude: saveLng,
+        geoTag: '$saveLat,$saveLng',
+        remarks: savedRemarks,
         verifiedBy: supervisorVerifiedBy(session),
         before: beforeUploads,
         after: afterUploads,
@@ -900,21 +1131,29 @@ class _ActivityScreenState extends State<ActivityScreen> {
             ? null
             : ((_uc != null && _uc!.isNotEmpty) ? _uc : null);
         if (_isContainerFlow) {
-          draft.containerType = _containerType;
-          draft.containerId = _container!.containerId;
-          draft.containerName = _container!.containerName;
-          draft.vehicleNumber = _vehicle!.number;
-          draft.vehicleType = _vehicleType;
+          draft.containerType = saveContainerType;
+          draft.containerId = saveContainerId;
+          draft.containerName = saveContainerName;
+          draft.vehicleNumber = saveVehicleNumber ?? '';
+          draft.vehicleType = saveVehicleType;
         }
         draft.beforePhotos.addAll(stampedBefore);
         draft.afterPhotos.addAll(stampedAfter);
-        draft.remarks = _remarks.text.trim();
-        draft.latitude = _lat;
-        draft.longitude = _lng;
+        draft.remarks = savedRemarks;
+        draft.latitude = saveLat;
+        draft.longitude = saveLng;
         draft.recordId = saved.id;
         draft.savedAt = DateTime.now();
       });
-      AppStateScope.read(context).noteWasteSynced();
+      final appState = AppStateScope.read(context);
+      appState.noteWasteSynced();
+      appState.rememberActivitySave(
+        latitude: saveLat,
+        longitude: saveLng,
+        containerId: saveContainerId,
+        vehicleNumber: saveVehicleNumber,
+        remarks: savedRemarks,
+      );
 
       if (!mounted) return;
       // Only leave Activity after a successful save. Before/after photo steps
@@ -922,7 +1161,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       final message = (saved.message ?? '').trim().isEmpty
           ? 'Activity saved successfully.'
           : saved.message!.trim();
-      AppStateScope.read(context).setFlashNotice(message);
+      appState.setFlashNotice(message);
       _fixRequest?.cancel();
       setState(() {
         _step = _ActivityStep.before;
@@ -930,13 +1169,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _uc = null;
         _container = null;
         _containerType = null;
-        _wipeVehicle();
         _beforePhotos.clear();
         _afterPhotos.clear();
         _containers = const [];
         _error = null;
-        _remarks.clear();
-        _wipeFix();
+        _wipeVisitFields();
       });
       if (!mounted) return;
       context.go(AppRoutes.waste);
@@ -1170,6 +1407,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       controller: _remarks,
                       hint: 'Add remarks',
                       maxLines: 4,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      autofillHints: const [],
+                      onChanged: (_) => _remarksEntered = true,
                     ),
                   ),
                 ],
@@ -1183,7 +1424,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
       title: 'After picture',
       actions: [
         TextButton(
-          onPressed: () => setState(() => _step = _ActivityStep.before),
+          onPressed: () => setState(() {
+            _step = _ActivityStep.before;
+            _wipeLock();
+          }),
           child: Text(
             'Back',
             style: AppType.caption.copyWith(
@@ -1201,10 +1445,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          const ModuleHero(
+          ModuleHero(
             icon: Icons.done_all_rounded,
             title: 'Finish the record',
-            subtitle: 'Add the after picture, remarks and live location, then submit.',
+            subtitle: _lock == null
+                ? 'Add the after picture, remarks and live location, then submit.'
+                : 'Vehicle locked: ${_lock!.vehicleNumber}. If wrong, tap Back and choose again.',
             colors: ModulePalette.waste,
           ),
           const SizedBox(height: 16),
@@ -1310,12 +1556,34 @@ class _ActivityScreenState extends State<ActivityScreen> {
               controller: _remarks,
               hint: 'Add remarks',
               maxLines: 4,
+              enableSuggestions: false,
+              autocorrect: false,
+              autofillHints: const [],
+              onChanged: (_) => _remarksEntered = true,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _ActivityLock {
+  const _ActivityLock({
+    required this.containerId,
+    required this.containerName,
+    required this.containerType,
+    required this.vehicleId,
+    required this.vehicleNumber,
+    required this.vehicleType,
+  });
+
+  final int containerId;
+  final String containerName;
+  final String? containerType;
+  final int? vehicleId;
+  final String vehicleNumber;
+  final String vehicleType;
 }
 
 class _InlineLoader extends StatelessWidget {

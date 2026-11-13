@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../constants/app_assets.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 
@@ -25,7 +26,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       if (status != AnimationStatus.completed || !mounted) return;
       await AppStateScope.read(context).ready;
       if (!mounted) return;
-      final signedIn = AppStateScope.read(context).session != null;
+      final session = AppStateScope.read(context).session;
+      final signedIn = session != null && session.can(StaffCapability.login);
       context.go(signedIn ? AppRoutes.home : AppRoutes.login);
     });
     _progress.forward();

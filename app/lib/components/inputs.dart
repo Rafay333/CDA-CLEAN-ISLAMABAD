@@ -64,6 +64,10 @@ class TextInput extends StatefulWidget {
     this.canToggleObscure = false,
     this.textInputAction,
     this.dense = false,
+    this.onChanged,
+    this.enableSuggestions = true,
+    this.autocorrect = true,
+    this.autofillHints,
   });
 
   final String label;
@@ -76,6 +80,10 @@ class TextInput extends StatefulWidget {
   final bool canToggleObscure;
   final TextInputAction? textInputAction;
   final bool dense;
+  final ValueChanged<String>? onChanged;
+  final bool enableSuggestions;
+  final bool autocorrect;
+  final Iterable<String>? autofillHints;
 
   @override
   State<TextInput> createState() => _TextInputState();
@@ -98,6 +106,10 @@ class _TextInputState extends State<TextInput> {
           maxLines: widget.canToggleObscure ? 1 : widget.maxLines,
           obscureText: widget.canToggleObscure ? _hidden : widget.obscure,
           textInputAction: widget.textInputAction,
+          onChanged: widget.onChanged,
+          enableSuggestions: widget.enableSuggestions,
+          autocorrect: widget.autocorrect,
+          autofillHints: widget.autofillHints,
           style: AppType.body,
           cursorColor: AppColors.emerald,
           decoration: InputDecoration(

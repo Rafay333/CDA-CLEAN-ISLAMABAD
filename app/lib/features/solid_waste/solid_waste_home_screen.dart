@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import 'waste_catalog.dart';
@@ -48,6 +49,55 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final session = AppStateScope.of(context).session;
+    final containers = session?.can(StaffCapability.serveContainers) == true;
+    final evidence = session?.can(StaffCapability.submitEvidence) == true;
+    final otherRecords = session?.canUseOtherFieldRecords == true;
+    final cards = <Widget>[
+      if (containers || otherRecords)
+        ModuleMenuCard(
+          icon: Icons.show_chart_rounded,
+          accent: const Color(0xFF0284C7),
+          badge: const Color(0xFFE0F2FE),
+          title: 'Activity',
+          subtitle: otherRecords
+              ? 'Before / after photos with zone, container and GPS.'
+              : 'Container clearance with before / after photos and GPS.',
+          onTap: () => context.push(AppRoutes.wasteActivity),
+        ),
+      if (otherRecords)
+        ModuleMenuCard(
+          icon: Icons.sell_outlined,
+          accent: const Color(0xFF0F766E),
+          badge: const Color(0xFFE5F6F4),
+          title: 'Tagging',
+          subtitle: 'Zone → site → container type → GPS + photo.',
+          onTap: () => context.push(AppRoutes.wasteTagging),
+        ),
+      if (evidence)
+        ModuleMenuCard(
+          icon: Icons.photo_camera_outlined,
+          accent: const Color(0xFF0369A1),
+          badge: const Color(0xFFE0F2FE),
+          title: 'PED evidence',
+          subtitle: 'Upload today’s pictorial evidence.',
+          onTap: () => context.push(AppRoutes.wasteEvidenceUpload),
+        ),
+      if (evidence)
+        ModuleMenuCard(
+          icon: Icons.photo_library_outlined,
+          accent: const Color(0xFF0F766E),
+          badge: const Color(0xFFE5F6F4),
+          title: 'Evidence history',
+          subtitle: 'Photos already saved for a day.',
+          onTap: () => context.push(AppRoutes.wasteEvidenceHistory),
+        ),
+    ];
+    final subtitle = containers && !otherRecords && !evidence
+        ? 'Record container clearance with before and after photos.'
+        : otherRecords
+            ? 'Record daily activity with before/after photos, or tag containers with live GPS.'
+            : 'Upload pictorial evidence for the day.';
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -57,31 +107,17 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const ModuleHero(
+                ModuleHero(
                   icon: Icons.delete_outline_rounded,
                   title: 'Solid waste field work',
-                  subtitle:
-                      'Record daily activity with before/after photos, or tag containers with live GPS.',
+                  subtitle: subtitle,
                   colors: ModulePalette.waste,
                 ),
                 const SizedBox(height: 16),
-                ModuleMenuCard(
-                  icon: Icons.show_chart_rounded,
-                  accent: const Color(0xFF0284C7),
-                  badge: const Color(0xFFE0F2FE),
-                  title: 'Activity',
-                  subtitle: 'Before / after photos with zone, container and GPS.',
-                  onTap: () => context.push(AppRoutes.wasteActivity),
-                ),
-                const SizedBox(height: 12),
-                ModuleMenuCard(
-                  icon: Icons.sell_outlined,
-                  accent: const Color(0xFF0F766E),
-                  badge: const Color(0xFFE5F6F4),
-                  title: 'Tagging',
-                  subtitle: 'Zone → site → container type → GPS + photo.',
-                  onTap: () => context.push(AppRoutes.wasteTagging),
-                ),
+                for (var i = 0; i < cards.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  cards[i],
+                ],
               ],
             ),
           ),

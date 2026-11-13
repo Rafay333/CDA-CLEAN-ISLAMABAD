@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -8,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/pakistan_time.dart';
+import 'staff_capabilities.dart';
 
 const supervisorBaseUrl = 'https://cda-swm.asktech.com.pk:5010';
 
@@ -40,6 +42,9 @@ class SupervisorUser {
     required this.contractorId,
     required this.contractorCode,
     required this.contractorName,
+    this.role = '',
+    this.roleLabel = '',
+    this.capabilities = StaffCapability.all,
   });
 
   final int userId;
@@ -50,6 +55,9 @@ class SupervisorUser {
   final int contractorId;
   final String contractorCode;
   final String contractorName;
+  final String role;
+  final String roleLabel;
+  final List<String> capabilities;
 
   factory SupervisorUser.fromJson(Map<String, dynamic> json) {
     return SupervisorUser(
@@ -61,6 +69,29 @@ class SupervisorUser {
       contractorId: _int(json['contractorId']),
       contractorCode: _text(json['contractorCode']),
       contractorName: _text(json['contractorName']),
+      role: _text(json['role']),
+      roleLabel: staffRoleLabel(json),
+      capabilities: capabilitiesFromJson(json),
+    );
+  }
+
+  SupervisorUser copyWith({
+    String? role,
+    String? roleLabel,
+    List<String>? capabilities,
+  }) {
+    return SupervisorUser(
+      userId: userId,
+      employeeId: employeeId,
+      fullName: fullName,
+      cnic: cnic,
+      phone: phone,
+      contractorId: contractorId,
+      contractorCode: contractorCode,
+      contractorName: contractorName,
+      role: role ?? this.role,
+      roleLabel: roleLabel ?? this.roleLabel,
+      capabilities: capabilities ?? this.capabilities,
     );
   }
 
@@ -73,7 +104,34 @@ class SupervisorUser {
     'contractorId': contractorId,
     'contractorCode': contractorCode,
     'contractorName': contractorName,
+    'role': role,
+    'roleLabel': roleLabel,
+    'capabilities': capabilities,
   };
+}
+
+/// Role and capability fields from `/me` or the gap profile.
+/// Null means that field was absent, so the saved session value stays.
+class StaffAccessUpdate {
+  const StaffAccessUpdate({this.role, this.roleLabel, this.capabilities});
+
+  final String? role;
+  final String? roleLabel;
+  final List<String>? capabilities;
+
+  bool get isEmpty => role == null && roleLabel == null && capabilities == null;
+
+  factory StaffAccessUpdate.fromJson(Map<String, dynamic> json) {
+    final hasCaps = json.containsKey('capabilities');
+    final role = json.containsKey('role') ? _optional(json['role']) : null;
+    final roleLabel = _optional(json['roleLabel']) ?? _optional(json['role_label']);
+    if (!hasCaps && role == null && roleLabel == null) return const StaffAccessUpdate();
+    return StaffAccessUpdate(
+      role: role,
+      roleLabel: roleLabel,
+      capabilities: hasCaps ? readCapabilityList(json['capabilities']) : null,
+    );
+  }
 }
 
 class SupervisorIssue {
@@ -795,6 +853,9 @@ class SupervisorProfile {
     this.dob,
     this.contractorName = '',
     this.accountType = '',
+    this.role = '',
+    this.roleLabel = '',
+    this.capabilities,
   });
 
   final String fullName;
@@ -804,6 +865,9 @@ class SupervisorProfile {
   final String? dob;
   final String contractorName;
   final String accountType;
+  final String role;
+  final String roleLabel;
+  final List<String>? capabilities;
 
   factory SupervisorProfile.fromJson(Map<String, dynamic> json) {
     return SupervisorProfile(
@@ -814,6 +878,9 @@ class SupervisorProfile {
       dob: _optional(json['dob']),
       contractorName: _text(json['contractor_name']),
       accountType: _text(json['account_type']),
+      role: _text(json['role']),
+      roleLabel: staffRoleLabel(json),
+      capabilities: json.containsKey('capabilities') ? readCapabilityList(json['capabilities']) : null,
     );
   }
 }
@@ -895,6 +962,11 @@ class SupervisorApi {
 
   final Dio dio;
 
+  static final Options _staffAccessTimeout = Options(
+    sendTimeout: const Duration(seconds: 12),
+    receiveTimeout: const Duration(seconds: 12),
+  );
+
   Future<SupervisorUser> login({required String cnic, required String password}) async {
     final data = _map(
       await _send(
@@ -905,6 +977,54 @@ class SupervisorApi {
       throw SupervisorException(_text(data['message']).isEmpty ? 'Login failed.' : _text(data['message']));
     }
     return SupervisorUser.fromJson(data);
+  }
+
+  Future<SupervisorUser> activate({
+    required String cnic,
+    required String password,
+    String? phone,
+  }) async {
+    final data = _map(
+      await _send(
+        dio.post('/api/supervisor/activate', data: {
+          'cnic': cnic,
+          'password': password,
+          if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        }),
+      ),
+    );
+    if (data['success'] == false) {
+      throw SupervisorException(_text(data['message']).isEmpty ? 'Activation failed.' : _text(data['message']));
+    }
+    return SupervisorUser.fromJson(data);
+  }
+
+  Future<StaffAccessUpdate?> me(String cnic) async {
+    final data = _map(
+      await _send(
+        dio.get(
+          '/api/supervisor/me',
+          queryParameters: {'supervisor_cnic': cnic},
+          options: _staffAccessTimeout,
+        ),
+      ),
+    );
+    final update = StaffAccessUpdate.fromJson(_staffBody(data));
+    return update.isEmpty ? null : update;
+  }
+
+  Future<StaffAccessUpdate?> gapProfile(String cnic) async {
+    final data = _map(
+      await _send(
+        dio.get(
+          '/api/supervisor-gap/profile',
+          queryParameters: {'supervisor_cnic': cnic},
+          options: _staffAccessTimeout,
+        ),
+      ),
+    );
+    final update = StaffAccessUpdate.fromJson(_staffBody(data));
+    return update.isEmpty ? null : update;
   }
 
   Future<List<SupervisorIssue>> issues(String cnic, {String status = 'all', String? query}) {
@@ -1467,7 +1587,9 @@ class SupervisorApi {
     if (latitude != null && latitude.isNotEmpty) form.fields.add(MapEntry('latitude', latitude));
     if (longitude != null && longitude.isNotEmpty) form.fields.add(MapEntry('longitude', longitude));
     if (geoTag != null && geoTag.isNotEmpty) form.fields.add(MapEntry('geo_tag', geoTag));
-    if (remarks != null && remarks.trim().isNotEmpty) form.fields.add(MapEntry('remarks', remarks.trim()));
+    // Always send remarks for field records (including empty). Omitting the
+    // field let some servers copy the supervisor's previous "cl" remark.
+    if (remarks != null) form.fields.add(MapEntry('remarks', remarks.trim()));
     if (verifiedBy != null && verifiedBy.trim().isNotEmpty) {
       form.fields.add(MapEntry('verified_by', verifiedBy.trim()));
     }
@@ -1791,13 +1913,46 @@ LocationSettings _freshLocationSettings() {
   );
 }
 
+double metersBetweenCoords(
+  double lat1,
+  double lng1,
+  double lat2,
+  double lng2,
+) {
+  const earth = 6371000.0;
+  final p1 = lat1 * math.pi / 180;
+  final p2 = lat2 * math.pi / 180;
+  final dLat = (lat2 - lat1) * math.pi / 180;
+  final dLng = (lng2 - lng1) * math.pi / 180;
+  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(p1) * math.cos(p2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+  return 2 * earth * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+}
+
+bool sameGeoTag(String? aLat, String? aLng, String? bLat, String? bLng) {
+  final lat1 = aLat?.trim() ?? '';
+  final lng1 = aLng?.trim() ?? '';
+  final lat2 = bLat?.trim() ?? '';
+  final lng2 = bLng?.trim() ?? '';
+  if (lat1.isEmpty || lng1.isEmpty || lat2.isEmpty || lng2.isEmpty) return false;
+  return lat1 == lat2 && lng1 == lng2;
+}
+
 /// A satellite fix taken for this request.
 ///
 /// Medium-accuracy reads often return the phone's last network point, so two
 /// bins minutes apart were saved with the identical coordinates. This waits
 /// for a fix whose timestamp belongs to this request and whose accuracy is
 /// tight enough to tell one container from the next.
-Future<String> freshGeoTag({FreshFixRequest? request}) async {
+///
+/// Pass [avoidLatitude]/[avoidLongitude] after a previous save so a stuck
+/// phone cache cannot stamp the next container with the exact same pin.
+Future<String> freshGeoTag({
+  FreshFixRequest? request,
+  String? avoidLatitude,
+  String? avoidLongitude,
+  double minMoveMeters = 20,
+}) async {
   await ensureLiveLocationEnabled();
   if (request?.cancelled ?? false) throw FreshFixCancelled();
 
@@ -1806,6 +1961,10 @@ Future<String> freshGeoTag({FreshFixRequest? request}) async {
   StreamSubscription<Position>? sub;
   Timer? relax;
   Position? best;
+  Position? bestMoved;
+  final avoidLat = double.tryParse(avoidLatitude?.trim() ?? '');
+  final avoidLng = double.tryParse(avoidLongitude?.trim() ?? '');
+  final mustMove = avoidLat != null && avoidLng != null;
 
   void succeed(Position position) {
     if (!completer.isCompleted) completer.complete(position);
@@ -1813,6 +1972,17 @@ Future<String> freshGeoTag({FreshFixRequest? request}) async {
 
   void fail(Object error) {
     if (!completer.isCompleted) completer.completeError(error);
+  }
+
+  bool movedEnough(Position position) {
+    if (!mustMove) return true;
+    return metersBetweenCoords(
+          avoidLat,
+          avoidLng,
+          position.latitude,
+          position.longitude,
+        ) >=
+        minMoveMeters;
   }
 
   request?._onCancel = () => fail(FreshFixCancelled());
@@ -1837,11 +2007,15 @@ Future<String> freshGeoTag({FreshFixRequest? request}) async {
           return;
         }
         final stamp = position.timestamp.toUtc();
-        if (stamp.isBefore(started.subtract(const Duration(seconds: 20)))) return;
+        // Reject clearly stale cache. Allow a short provider clock skew.
+        if (stamp.isBefore(started.subtract(const Duration(seconds: 8)))) return;
         final accuracy = position.accuracy;
         if (accuracy <= 0) return;
         if (best == null || accuracy < best!.accuracy) best = position;
-        if (accuracy <= 60) succeed(position);
+        if (movedEnough(position)) {
+          if (bestMoved == null || accuracy < bestMoved!.accuracy) bestMoved = position;
+          if (accuracy <= 45) succeed(position);
+        }
       },
       onError: (Object error, StackTrace _) {
         if (error is FreshFixCancelled || error is SupervisorException) {
@@ -1856,18 +2030,36 @@ Future<String> freshGeoTag({FreshFixRequest? request}) async {
       },
     );
 
-    relax = Timer(const Duration(seconds: 12), () {
+    relax = Timer(const Duration(seconds: 14), () {
       if (request?.cancelled ?? false) {
         fail(FreshFixCancelled());
         return;
       }
+      final moved = bestMoved;
+      if (moved != null && moved.accuracy <= 100) {
+        succeed(moved);
+        return;
+      }
+      if (mustMove) {
+        fail(
+          SupervisorException(
+            'GPS is still on the previous container. Move closer to this bin in the open and try again.',
+          ),
+        );
+        return;
+      }
       final candidate = best;
-      if (candidate != null && candidate.accuracy <= 120) succeed(candidate);
+      if (candidate != null && candidate.accuracy <= 100) succeed(candidate);
     });
 
-    final position = await completer.future.timeout(const Duration(seconds: 25));
+    final position = await completer.future.timeout(const Duration(seconds: 28));
     return '${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}';
   } on TimeoutException {
+    if (mustMove) {
+      throw SupervisorException(
+        'GPS is still on the previous container. Move closer to this bin in the open and try again.',
+      );
+    }
     throw SupervisorException(
       'Could not get a fresh GPS fix. Step into an open area and try again.',
     );
@@ -2001,6 +2193,20 @@ Map<String, dynamic> _map(dynamic data) {
   if (data is Map<String, dynamic>) return data;
   if (data is Map) return Map<String, dynamic>.from(data);
   throw SupervisorException('The server sent an unexpected response.');
+}
+
+Map<String, dynamic> _staffBody(Map<String, dynamic> data) {
+  if (data.containsKey('capabilities') ||
+      data.containsKey('role') ||
+      data.containsKey('role_label') ||
+      data.containsKey('roleLabel')) {
+    return data;
+  }
+  for (final key in ['profile', 'user', 'data']) {
+    final nested = data[key];
+    if (nested is Map) return Map<String, dynamic>.from(nested);
+  }
+  return data;
 }
 
 List<dynamic> _list(dynamic data, List<String> keys) {

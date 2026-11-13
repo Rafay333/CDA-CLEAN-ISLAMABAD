@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -21,6 +22,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   FieldRecordDay? _records;
   String? _error;
   bool _loading = true;
+  bool _wantIssues = false;
+  bool _wantEvidence = false;
+  bool _wantRecords = false;
 
   @override
   void initState() {
@@ -39,40 +43,61 @@ class _ReportsScreenState extends State<ReportsScreen> {
       });
       return;
     }
+    final wantIssues = session.can(StaffCapability.resolveIssues);
+    final wantEvidence = session.can(StaffCapability.submitEvidence);
+    final wantRecords =
+        session.can(StaffCapability.serveContainers) || session.canUseOtherFieldRecords;
     setState(() {
       _loading = true;
       _error = null;
+      _wantIssues = wantIssues;
+      _wantEvidence = wantEvidence;
+      _wantRecords = wantRecords;
     });
-    try {
-      final api = SupervisorApi();
-      final issues = await api.issues(session.cnic);
-      EvidenceDay? evidence;
-      FieldRecordDay? records;
+    if (!wantIssues && !wantEvidence && !wantRecords) {
+      setState(() {
+        _issues = const [];
+        _evidence = null;
+        _records = null;
+        _loading = false;
+      });
+      return;
+    }
+    final api = SupervisorApi();
+    final errors = <String>[];
+    var issues = const <SupervisorIssue>[];
+    EvidenceDay? evidence;
+    FieldRecordDay? records;
+    if (wantIssues) {
+      try {
+        issues = await api.issues(session.cnic);
+      } on SupervisorException catch (error) {
+        errors.add(error.message);
+      }
+    }
+    if (wantEvidence) {
       try {
         evidence = await api.evidence(session.cnic);
-      } on SupervisorException {
-        evidence = null;
+      } on SupervisorException catch (error) {
+        errors.add(error.message);
       }
+    }
+    if (wantRecords) {
       try {
         records = await api.fieldRecords(session.cnic);
-      } on SupervisorException {
-        records = null;
+      } on SupervisorException catch (error) {
+        errors.add(error.message);
       }
-      if (!mounted) return;
-      setState(() {
-        _issues = issues;
-        _evidence = evidence;
-        _records = records;
-        _loading = false;
-        _error = null;
-      });
-    } on SupervisorException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = error.message;
-      });
     }
+    if (!mounted) return;
+    final attempted = (wantIssues ? 1 : 0) + (wantEvidence ? 1 : 0) + (wantRecords ? 1 : 0);
+    setState(() {
+      _issues = issues;
+      _evidence = evidence;
+      _records = records;
+      _loading = false;
+      _error = errors.length >= attempted && errors.isNotEmpty ? errors.first : null;
+    });
   }
 
   @override
@@ -119,10 +144,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               OutlineButton(label: 'Try again', onPressed: _load),
             ] else ...[
               _SummaryStrip(
-                records: recordCount,
-                evidence: evidenceCount,
-                open: openCount,
-                resolved: resolvedCount,
+                records: _wantRecords ? recordCount : null,
+                evidence: _wantEvidence ? evidenceCount : null,
+                open: _wantIssues ? openCount : null,
+                resolved: _wantIssues ? resolvedCount : null,
               ),
               const SizedBox(height: 16),
               if (!hasAny)
@@ -235,13 +260,20 @@ class _SummaryStrip extends StatelessWidget {
     required this.resolved,
   });
 
-  final int records;
-  final int evidence;
-  final int open;
-  final int resolved;
+  final int? records;
+  final int? evidence;
+  final int? open;
+  final int? resolved;
 
   @override
   Widget build(BuildContext context) {
+    final stats = <({String label, int value, Color color})>[
+      if (records != null) (label: 'Records', value: records!, color: ModulePalette.reportsAccent),
+      if (evidence != null) (label: 'Evidence', value: evidence!, color: ModulePalette.wasteAccent),
+      if (open != null) (label: 'Open', value: open!, color: AppColors.warning),
+      if (resolved != null) (label: 'Done', value: resolved!, color: AppColors.success),
+    ];
+    if (stats.isEmpty) return const SizedBox.shrink();
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -251,13 +283,10 @@ class _SummaryStrip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _Stat(label: 'Records', value: records, color: ModulePalette.reportsAccent),
-          _divider(),
-          _Stat(label: 'Evidence', value: evidence, color: ModulePalette.wasteAccent),
-          _divider(),
-          _Stat(label: 'Open', value: open, color: AppColors.warning),
-          _divider(),
-          _Stat(label: 'Done', value: resolved, color: AppColors.success),
+          for (var i = 0; i < stats.length; i++) ...[
+            if (i > 0) _divider(),
+            _Stat(label: stats[i].label, value: stats[i].value, color: stats[i].color),
+          ],
         ],
       ),
     );

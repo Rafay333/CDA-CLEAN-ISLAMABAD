@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../components/components.dart';
 import '../constants/app_routes.dart';
+import '../core/staff_access.dart';
+import '../state/app_state.dart';
 import '../features/authentication/forgot_password_screen.dart';
 import '../features/authentication/login_screen.dart';
 import '../features/authentication/splash_screen.dart';
@@ -32,9 +34,21 @@ import '../features/solid_waste/record_details_screen.dart';
 import '../features/solid_waste/solid_waste_home_screen.dart';
 import '../features/solid_waste/tagging_screen.dart';
 
-GoRouter createAppRouter() {
+GoRouter createAppRouter(AppState appState) {
   return GoRouter(
     initialLocation: AppRoutes.splash,
+    refreshListenable: appState,
+    redirect: (context, state) {
+      final path = state.uri.path;
+      if (path == AppRoutes.splash || path == AppRoutes.login || path == AppRoutes.forgotPassword) {
+        return null;
+      }
+      final session = appState.session;
+      if (session == null) return null;
+      if (!session.can(StaffCapability.login)) return AppRoutes.login;
+      if (!session.allowsPath(path) && path != AppRoutes.home) return AppRoutes.home;
+      return null;
+    },
     routes: [
       GoRoute(
         path: AppRoutes.splash,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../components/components.dart';
 import '../../constants/app_assets.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_typography.dart';
 import '../profile/profile_screen.dart';
@@ -48,7 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
             refreshing: _refreshing,
             onSync: () => showSyncSheet(context),
             onRefresh: _refreshPage,
-            onNotifications: () => context.push(AppRoutes.notifications),
+            onNotifications: state.session?.can(StaffCapability.resolveIssues) == true
+                ? () => context.push(AppRoutes.notifications)
+                : null,
             onLogout: () => confirmSignOut(context),
           ),
           Expanded(
@@ -56,12 +59,69 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (context, constraints) {
                 final contentWidth = constraints.maxWidth - 32;
                 final bannerHeight = (contentWidth * 9 / 16).clamp(168.0, 214.0);
+                final session = state.session;
+                final hr = session?.can(StaffCapability.manageHr) == true ||
+                    session?.can(StaffCapability.markAttendance) == true;
+                final waste = session?.can(StaffCapability.serveContainers) == true ||
+                    session?.can(StaffCapability.submitEvidence) == true ||
+                    session?.canUseOtherFieldRecords == true;
+                final complaints = session?.can(StaffCapability.resolveIssues) == true;
+                final showToday = session?.can(StaffCapability.manageHr) == true ||
+                    session?.can(StaffCapability.resolveIssues) == true ||
+                    session?.can(StaffCapability.submitEvidence) == true;
+                final modules = <Widget>[
+                  if (hr)
+                    _ModuleCard(
+                      icon: Icons.groups_outlined,
+                      accent: _HomePalette.hr,
+                      tint: const Color(0xFFDDF3EC),
+                      iconBackground: const Color(0xFFE6F6F1),
+                      title: 'HR Management',
+                      subtitle: 'Manual photo register and GPS attendance.',
+                      onTap: () => context.push(AppRoutes.hr1),
+                    ),
+                  if (hr)
+                    _ModuleCard(
+                      icon: Icons.face_retouching_natural_outlined,
+                      accent: const Color(0xFF0F766E),
+                      tint: const Color(0xFFDDF3EC),
+                      iconBackground: const Color(0xFFE6F6F1),
+                      title: 'HR Management_Face',
+                      subtitle: 'Face recognition register and verified attendance.',
+                      onTap: () => context.push(AppRoutes.hrFace),
+                    ),
+                  if (waste)
+                    _ModuleCard(
+                      icon: Icons.delete_outline_rounded,
+                      accent: _HomePalette.waste,
+                      tint: const Color(0xFFD9EFFB),
+                      iconBackground: const Color(0xFFE7F4FC),
+                      title: 'Solid Waste Management',
+                      subtitle: session?.can(StaffCapability.serveContainers) == true &&
+                              session?.can(StaffCapability.submitEvidence) != true
+                          ? 'Container service and clearance.'
+                          : 'Daily PED pictorial evidence.',
+                      onTap: () => context.push(AppRoutes.waste),
+                    ),
+                  if (complaints)
+                    _ModuleCard(
+                      icon: Icons.assignment_outlined,
+                      accent: _HomePalette.complaints,
+                      tint: const Color(0xFFFFE8C4),
+                      iconBackground: const Color(0xFFFFF4E3),
+                      title: 'Complaints Management',
+                      subtitle: 'Review and update cleanliness complaints.',
+                      onTap: () => context.push(AppRoutes.complaints),
+                    ),
+                ];
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                   children: [
                     _HeroBanner(height: bannerHeight),
-                    const SizedBox(height: 14),
-                    TodayCard(key: _todayKey),
+                    if (showToday) ...[
+                      const SizedBox(height: 14),
+                      TodayCard(key: _todayKey),
+                    ],
                     const SizedBox(height: 20),
                     Text(
                       'Modules',
@@ -72,45 +132,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _ModuleCard(
-                      icon: Icons.groups_outlined,
-                      accent: _HomePalette.hr,
-                      tint: const Color(0xFFDDF3EC),
-                      iconBackground: const Color(0xFFE6F6F1),
-                      title: 'HR Management',
-                      subtitle: 'Manual photo register and GPS attendance.',
-                      onTap: () => context.push(AppRoutes.hr1),
-                    ),
-                    const SizedBox(height: 12),
-                    _ModuleCard(
-                      icon: Icons.face_retouching_natural_outlined,
-                      accent: const Color(0xFF0F766E),
-                      tint: const Color(0xFFDDF3EC),
-                      iconBackground: const Color(0xFFE6F6F1),
-                      title: 'HR Management_Face',
-                      subtitle: 'Face recognition register and verified attendance.',
-                      onTap: () => context.push(AppRoutes.hrFace),
-                    ),
-                    const SizedBox(height: 12),
-                    _ModuleCard(
-                      icon: Icons.delete_outline_rounded,
-                      accent: _HomePalette.waste,
-                      tint: const Color(0xFFD9EFFB),
-                      iconBackground: const Color(0xFFE7F4FC),
-                      title: 'Solid Waste Management',
-                      subtitle: 'Daily PED pictorial evidence.',
-                      onTap: () => context.push(AppRoutes.waste),
-                    ),
-                    const SizedBox(height: 12),
-                    _ModuleCard(
-                      icon: Icons.assignment_outlined,
-                      accent: _HomePalette.complaints,
-                      tint: const Color(0xFFFFE8C4),
-                      iconBackground: const Color(0xFFFFF4E3),
-                      title: 'Complaints Management',
-                      subtitle: 'Review and update cleanliness complaints.',
-                      onTap: () => context.push(AppRoutes.complaints),
-                    ),
+                    if (modules.isEmpty)
+                      Text(
+                        'No modules are assigned to this account.',
+                        style: AppType.body.copyWith(color: _HomePalette.secondary),
+                      )
+                    else
+                      for (var i = 0; i < modules.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 12),
+                        modules[i],
+                      ],
                   ],
                 );
               },

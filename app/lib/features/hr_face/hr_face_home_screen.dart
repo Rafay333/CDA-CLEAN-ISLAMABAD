@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/components.dart';
 import '../../constants/app_routes.dart';
+import '../../core/staff_access.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_typography.dart';
 import 'face_hr_ui.dart';
@@ -24,6 +26,9 @@ class HrFaceHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = AppStateScope.of(context).session;
+    final roster = session?.can(StaffCapability.manageHr) == true;
+    final attendance = session?.can(StaffCapability.markAttendance) == true;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -43,32 +48,35 @@ class HrFaceHomeScreen extends StatelessWidget {
                       'Enroll a worker once with 3 photos, then mark attendance with a quiet 5-second capture.',
                 ),
                 const SizedBox(height: 16),
-                _Card(
-                  icon: Icons.face_retouching_natural_outlined,
-                  accent: const Color(0xFF0F766E),
-                  badge: const Color(0xFFE5F6F4),
-                  title: 'Register face',
-                  subtitle: 'Pick a worker, set the shift, capture 3 clear photos.',
-                  onTap: () => context.push(AppRoutes.hrFaceRegister),
-                ),
-                const SizedBox(height: 12),
-                _Card(
-                  icon: Icons.face_outlined,
-                  accent: const Color(0xFF1688D4),
-                  badge: const Color(0xFFE7F4FC),
-                  title: 'Attendance',
-                  subtitle: '5-second capture · face verify · GPS stamp.',
-                  onTap: () => context.push(AppRoutes.hrFaceAttendance),
-                ),
-                const SizedBox(height: 12),
-                _Card(
-                  icon: Icons.assignment_turned_in_outlined,
-                  accent: const Color(0xFF3B82F6),
-                  badge: const Color(0xFFE8F1FF),
-                  title: 'Attendance log',
-                  subtitle: 'Check-in and check-out tracks from the face module.',
-                  onTap: () => context.push(AppRoutes.hrFaceAttendanceLog),
-                ),
+                if (roster)
+                  _Card(
+                    icon: Icons.face_retouching_natural_outlined,
+                    accent: const Color(0xFF0F766E),
+                    badge: const Color(0xFFE5F6F4),
+                    title: 'Register face',
+                    subtitle: 'Pick a worker, set the shift, capture 3 clear photos.',
+                    onTap: () => context.push(AppRoutes.hrFaceRegister),
+                  ),
+                if (roster && attendance) const SizedBox(height: 12),
+                if (attendance) ...[
+                  _Card(
+                    icon: Icons.face_outlined,
+                    accent: const Color(0xFF1688D4),
+                    badge: const Color(0xFFE7F4FC),
+                    title: 'Attendance',
+                    subtitle: '5-second capture · face verify · GPS stamp.',
+                    onTap: () => context.push(AppRoutes.hrFaceAttendance),
+                  ),
+                  const SizedBox(height: 12),
+                  _Card(
+                    icon: Icons.assignment_turned_in_outlined,
+                    accent: const Color(0xFF3B82F6),
+                    badge: const Color(0xFFE8F1FF),
+                    title: 'Attendance log',
+                    subtitle: 'Check-in and check-out tracks from the face module.',
+                    onTap: () => context.push(AppRoutes.hrFaceAttendanceLog),
+                  ),
+                ],
               ],
             ),
           ),

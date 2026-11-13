@@ -36,7 +36,10 @@ class ProfileScreen extends StatelessWidget {
     final contractor = session?.contractorName ?? profile.contractorName;
     final cnic = displayOr(profile.cnic.isEmpty ? session?.cnic : profile.cnic, AppCopy.notProvided);
     final mobile = displayOr(profile.mobile, AppCopy.notProvided);
-    final account = displayOr(profile.accountType, AppCopy.roleLabel);
+    final account = displayOr(
+      profile.accountType.isNotEmpty ? profile.accountType : session?.roleLabel,
+      AppCopy.roleLabel,
+    );
 
     return AppPage(
       title: 'Profile',

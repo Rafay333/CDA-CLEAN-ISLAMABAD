@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/staff_access.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -48,25 +49,44 @@ class TodayCardState extends State<TodayCard> {
       });
       return;
     }
+    final showHr = session.can(StaffCapability.manageHr);
+    final showIssues = session.can(StaffCapability.resolveIssues);
+    final showEvidence = session.can(StaffCapability.submitEvidence);
+    if (!showHr && !showIssues && !showEvidence) {
+      setState(() {
+        _loading = false;
+        _summary = null;
+        _openIssues = null;
+        _evidence = null;
+        _required = null;
+        _uploadedRequired = null;
+        _error = null;
+      });
+      return;
+    }
     final api = SupervisorApi();
     final errors = <String>[];
-    final summary = await _try(() => api.hrSummary(session.cnic), errors);
-    final issues = await _try(() => api.openIssues(session.cnic), errors);
+    final summary = showHr ? await _try(() => api.hrSummary(session.cnic), errors) : null;
+    final issues = showIssues ? await _try(() => api.openIssues(session.cnic), errors) : null;
     EvidenceStatus? status;
     EvidenceDay? day;
-    try {
-      status = await api.evidenceStatus(session.cnic);
-    } on SupervisorException {
-      day = await _try(() => api.evidence(session.cnic), errors);
+    if (showEvidence) {
+      try {
+        status = await api.evidenceStatus(session.cnic);
+      } on SupervisorException {
+        day = await _try(() => api.evidence(session.cnic), errors);
+      }
     }
     if (!mounted) return;
-    final hasAny = summary != null || issues != null || status != null || day != null;
+    final hasAny = (showHr && summary != null) ||
+        (showIssues && issues != null) ||
+        (showEvidence && (status != null || day != null));
     setState(() {
       _summary = summary;
-      _openIssues = issues?.length;
-      _evidence = status?.totalPhotos ?? day?.count;
-      _required = status?.requiredCount;
-      _uploadedRequired = status?.uploadedRequired;
+      _openIssues = showIssues ? issues?.length : null;
+      _evidence = showEvidence ? (status?.totalPhotos ?? day?.count) : null;
+      _required = showEvidence ? status?.requiredCount : null;
+      _uploadedRequired = showEvidence ? status?.uploadedRequired : null;
       _loading = false;
       _error = hasAny ? null : (errors.isEmpty ? 'Could not load today.' : errors.first);
     });
@@ -74,6 +94,13 @@ class TodayCardState extends State<TodayCard> {
 
   @override
   Widget build(BuildContext context) {
+    final session = AppStateScope.of(context).session;
+    final showHr = session?.can(StaffCapability.manageHr) == true;
+    final showIssues = session?.can(StaffCapability.resolveIssues) == true;
+    final showEvidence = session?.can(StaffCapability.submitEvidence) == true;
+    if (!_loading && _error == null && !showHr && !showIssues && !showEvidence) {
+      return const SizedBox.shrink();
+    }
     return Material(
       color: AppColors.white,
       borderRadius: BorderRadius.circular(18),
@@ -90,19 +117,22 @@ class TodayCardState extends State<TodayCard> {
             ? Text(_error!, style: AppType.caption.copyWith(color: AppColors.error))
             : Row(
                 children: [
-                  _Stat(
-                    label: 'Present',
-                    value: _summary == null
-                        ? '—'
-                        : '${_summary!.presentToday}/${_summary!.activeEmployees}',
-                  ),
-                  _Stat(label: 'Open complaints', value: _openIssues == null ? '—' : '${_openIssues!}'),
-                  _Stat(
-                    label: 'PED photos',
-                    value: _required == null
-                        ? (_evidence == null ? '—' : '${_evidence!}')
-                        : '${_uploadedRequired ?? 0}/${_required ?? 0}',
-                  ),
+                  if (showHr)
+                    _Stat(
+                      label: 'Present',
+                      value: _summary == null
+                          ? '—'
+                          : '${_summary!.presentToday}/${_summary!.activeEmployees}',
+                    ),
+                  if (showIssues)
+                    _Stat(label: 'Open complaints', value: _openIssues == null ? '—' : '${_openIssues!}'),
+                  if (showEvidence)
+                    _Stat(
+                      label: 'PED photos',
+                      value: _required == null
+                          ? (_evidence == null ? '—' : '${_evidence!}')
+                          : '${_uploadedRequired ?? 0}/${_required ?? 0}',
+                    ),
                 ],
               ),
       ),

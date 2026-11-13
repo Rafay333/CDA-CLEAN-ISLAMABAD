@@ -19,7 +19,7 @@ class CdaApp extends StatefulWidget {
 
 class _CdaAppState extends State<CdaApp> {
   final _state = AppState();
-  late final _router = createAppRouter();
+  late final _router = createAppRouter(_state);
 
   @override
   void dispose() {

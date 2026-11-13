@@ -81,7 +81,9 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
           mobile: saved.mobile.isEmpty ? _mobile.text.trim() : saved.mobile,
           dob: saved.dob ?? _dob,
           contractorName: saved.contractorName.isEmpty ? current.contractorName : saved.contractorName,
-          accountType: saved.accountType.isEmpty ? current.accountType : saved.accountType,
+          accountType: row.roleLabel.isNotEmpty
+              ? row.roleLabel
+              : (current.accountType.isNotEmpty ? current.accountType : saved.accountType),
         ),
       );
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved.')));
@@ -146,7 +148,12 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                 (
                   Icons.verified_user_outlined,
                   'Account',
-                  displayOr(profile.accountType, AppCopy.notProvided)
+                  displayOr(
+                    profile.accountType.isNotEmpty
+                        ? profile.accountType
+                        : AppStateScope.of(context).session?.roleLabel,
+                    AppCopy.notProvided,
+                  ),
                 ),
               ],
             ),
