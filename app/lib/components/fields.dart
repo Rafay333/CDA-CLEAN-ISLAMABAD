@@ -14,8 +14,10 @@ class DropdownField extends StatelessWidget {
     required this.hint,
     required this.items,
     this.values,
+    this.notes,
     this.value,
     this.onChanged,
+    this.onBeforeOpen,
     this.errorText,
     this.enabled = true,
   });
@@ -28,8 +30,14 @@ class DropdownField extends StatelessWidget {
   /// [value] and [onChanged] use these ids so two rows with the same label
   /// cannot collapse into one record.
   final List<String>? values;
+
+  /// Optional second line, one per [items] entry.
+  final List<String?>? notes;
   final String? value;
   final ValueChanged<String>? onChanged;
+
+  /// Runs before the sheet opens so the caller can refresh the options.
+  final Future<void> Function()? onBeforeOpen;
   final String? errorText;
   final bool enabled;
 
@@ -39,14 +47,35 @@ class DropdownField extends StatelessWidget {
     return ids;
   }
 
-  String? get _closedLabel {
+  int? get _selectedIndex {
     final current = value;
     if (current == null || current.isEmpty) return null;
     final ids = _ids;
-    if (ids == null) return current;
+    if (ids == null) {
+      final index = items.indexOf(current);
+      return index < 0 ? null : index;
+    }
     final index = ids.indexOf(current);
-    if (index < 0) return null;
+    return index < 0 ? null : index;
+  }
+
+  String? get _closedLabel {
+    final index = _selectedIndex;
+    if (index == null) {
+      final current = value;
+      if (current == null || current.isEmpty) return null;
+      return _ids == null ? current : null;
+    }
     return items[index];
+  }
+
+  String? get _closedNote {
+    final notes = this.notes;
+    final index = _selectedIndex;
+    if (notes == null || index == null || index >= notes.length) return null;
+    final note = notes[index]?.trim();
+    if (note == null || note.isEmpty) return null;
+    return note;
   }
 
   @override
@@ -62,7 +91,15 @@ class DropdownField extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.sm),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.sm),
-            onTap: enabled ? () => _open(context) : null,
+            onTap: enabled
+                ? () async {
+                    final refresh = onBeforeOpen;
+                    if (refresh != null) await refresh();
+                    if (!context.mounted) return;
+                    final field = context.widget;
+                    if (field is DropdownField) field._open(context);
+                  }
+                : null,
             child: Container(
               constraints: const BoxConstraints(minHeight: 52),
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -75,13 +112,30 @@ class DropdownField extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      displayOr(_closedLabel, hint),
-                      style: AppType.body.copyWith(
-                        color: _closedLabel == null
-                            ? AppColors.disabledText
-                            : AppColors.textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayOr(_closedLabel, hint),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.body.copyWith(
+                            color: _closedLabel == null
+                                ? AppColors.disabledText
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                        if (_closedNote != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _closedNote!,
+                            style: AppType.caption.copyWith(
+                              color: _closedNote == '1/1' ? AppColors.success : AppColors.error,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   const Icon(
@@ -113,6 +167,7 @@ class DropdownField extends StatelessWidget {
           title: label,
           items: items,
           values: _ids,
+          notes: notes,
           selected: value,
         );
       },
@@ -127,11 +182,13 @@ class _OptionSheet extends StatefulWidget {
     required this.items,
     required this.selected,
     this.values,
+    this.notes,
   });
 
   final String title;
   final List<String> items;
   final List<String>? values;
+  final List<String?>? notes;
   final String? selected;
 
   @override
@@ -170,9 +227,10 @@ class _OptionSheetState extends State<_OptionSheet> {
     ];
     final media = MediaQuery.of(context);
     final maxHeight = (media.size.height - media.viewInsets.bottom) * 0.42;
+    final rowHeight = widget.notes == null ? 56.0 : 84.0;
     final height = visible.isEmpty
         ? 120.0
-        : (visible.length * 56.0).clamp(56.0, maxHeight);
+        : (visible.length * rowHeight).clamp(rowHeight, maxHeight);
 
     return SheetScaffold(
       title: widget.title,
@@ -226,8 +284,28 @@ class _OptionSheetState extends State<_OptionSheet> {
                           ? ids[itemIndex]
                           : item;
                       final chosen = id == widget.selected;
+                      final notes = widget.notes;
+                      final note = notes != null && itemIndex < notes.length
+                          ? notes[itemIndex]?.trim()
+                          : null;
                       return ListTile(
-                        title: Text(item, style: AppType.body),
+                        title: Text(
+                          item,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.body.copyWith(
+                            fontWeight: chosen ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: note == null || note.isEmpty
+                            ? null
+                            : Text(
+                                note,
+                                style: AppType.caption.copyWith(
+                                  color: note == '1/1' ? AppColors.success : AppColors.error,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                         trailing: chosen
                             ? const Icon(
                                 Icons.check_rounded,

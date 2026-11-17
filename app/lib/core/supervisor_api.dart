@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/pakistan_time.dart';
+import 'attendance_duty.dart';
 import 'staff_capabilities.dart';
 
 const supervisorBaseUrl = 'https://cda-swm.asktech.com.pk:5010';
@@ -648,6 +649,7 @@ class TaggingContainer {
     this.tagStatus = 'No',
     this.isTagged = false,
     this.taggingDate,
+    this.activityDone = false,
   });
 
   final int containerId;
@@ -663,6 +665,9 @@ class TaggingContainer {
   final String tagStatus;
   final bool isTagged;
   final String? taggingDate;
+
+  /// Container collection activity is already stored for this container.
+  final bool activityDone;
 
   double? get displayLat => latitude ?? siteLatitude;
   double? get displayLng => longitude ?? siteLongitude;
@@ -683,8 +688,37 @@ class TaggingContainer {
       isTagged: _flag(json['is_tagged']) ||
           (_optional(json['tag_status'])?.toLowerCase() == 'yes'),
       taggingDate: _optional(json['tagging_date']),
+      activityDone: _activityAlreadySaved(json),
     );
   }
+}
+
+/// True when the container payload already says a collection activity is stored.
+bool _activityAlreadySaved(Map<String, dynamic> json) {
+  const flags = [
+    'activity_done',
+    'activity_saved',
+    'collected',
+    'is_collected',
+    'collection_done',
+    'has_activity',
+    'activity_submitted',
+  ];
+  for (final key in flags) {
+    if (_flag(json[key])) return true;
+  }
+  final count = _int(
+    json['activity_count'] ?? json['collection_count'] ?? json['collected_count'],
+  );
+  if (count > 0) return true;
+  final status = (_optional(json['activity_status']) ??
+          _optional(json['collection_status']) ??
+          _optional(json['activity_fraction']) ??
+          _optional(json['fraction']) ??
+          '')
+      .replaceAll(' ', '')
+      .toLowerCase();
+  return status == '1/1' || status == 'done' || status == 'complete' || status == 'completed';
 }
 
 class CatalogLocation {
@@ -819,6 +853,10 @@ class FieldRecordSummary {
     this.status = '',
     this.date = '',
     this.remarks,
+    this.activity,
+    this.activityCode,
+    this.containerId,
+    this.containerName,
     this.beforePictures = const [],
     this.afterPictures = const [],
   });
@@ -828,16 +866,38 @@ class FieldRecordSummary {
   final String status;
   final String date;
   final String? remarks;
+  final String? activity;
+  final String? activityCode;
+  final int? containerId;
+  final String? containerName;
   final List<String> beforePictures;
   final List<String> afterPictures;
 
+  /// Container Collection/Clearance saved against an inventory container.
+  bool get isContainerActivity {
+    final code = (activityCode ?? '').trim().toLowerCase();
+    final label = (activity ?? '').trim().toLowerCase();
+    final containerJob = code == 'containers' ||
+        code == 'container' ||
+        code.contains('container collection') ||
+        label.contains('container collection');
+    if (!containerJob) return false;
+    if (containerId != null && containerId! > 0) return true;
+    return (containerName ?? '').trim().isNotEmpty;
+  }
+
   factory FieldRecordSummary.fromJson(Map<String, dynamic> json) {
+    final containerId = _int(json['container_id'] ?? json['containerId']);
     return FieldRecordSummary(
       id: _int(json['id'] ?? json['record_id']),
       kind: _text(json['kind']),
       status: _text(json['status']),
       date: _text(json['date']),
       remarks: _optional(json['remarks']),
+      activity: _optional(json['activity']),
+      activityCode: _optional(json['activity_code']),
+      containerId: containerId == 0 ? null : containerId,
+      containerName: _optional(json['container_name']),
       beforePictures: _paths(json['before_pictures'] ?? json['before']),
       afterPictures: _paths(json['after_pictures'] ?? json['after']),
     );
@@ -1258,6 +1318,78 @@ class SupervisorApi {
       throw SupervisorException(_text(data['message']).isEmpty ? 'Attendance was not saved.' : _text(data['message']));
     }
     return _text(data['message']).isEmpty ? 'Attendance saved.' : _text(data['message']);
+  }
+
+  /// Assigned union councils. Duty windows are not on this payload.
+  Future<List<SupervisorUc>> supervisorUcs(String cnic) async {
+    final data = await _send(
+      dio.get('/api/supervisor/ucs', queryParameters: {'supervisor_cnic': cnic}),
+    );
+    if (data is Map && data['success'] == false) {
+      throw SupervisorException(
+        _text(data['message']).isEmpty ? 'Union councils were not loaded.' : _text(data['message']),
+      );
+    }
+    final rows = data is List ? data : _list(data, const ['ucs', 'data', 'items']);
+    final ucs = [
+      for (final item in rows)
+        if (item is Map)
+          SupervisorUc.fromJson(Map<String, dynamic>.from(item)),
+    ].where((uc) => uc.id > 0).toList();
+    ucs.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return ucs;
+  }
+
+  /// Active attendance points for one of this supervisor's UCs, including duty windows.
+  Future<List<AttendancePoint>> attendancePoints(String cnic, int ucZoneId) async {
+    final data = await _send(
+      dio.get(
+        '/api/supervisor/attendance-points',
+        queryParameters: {'supervisor_cnic': cnic, 'uc_zone_id': ucZoneId},
+      ),
+    );
+    if (data is Map && data['success'] == false) {
+      throw SupervisorException(
+        _text(data['message']).isEmpty ? 'Attendance points were not loaded.' : _text(data['message']),
+      );
+    }
+    final rows = data is List ? data : _list(data, const ['points', 'data', 'items']);
+    return [
+      for (final item in rows)
+        if (item is Map)
+          AttendancePoint.fromJson(Map<String, dynamic>.from(item)),
+    ].where((point) => point.id > 0).toList();
+  }
+
+  /// Points for every assigned UC. A UC the server rejects is skipped.
+  /// The mark is not tied to a UC the supervisor picks.
+  Future<List<AttendancePoint>> attendancePointsAcross(String cnic, List<SupervisorUc> ucs) async {
+    final merged = <AttendancePoint>[];
+    const batchSize = 8;
+    for (var start = 0; start < ucs.length; start += batchSize) {
+      final end = start + batchSize > ucs.length ? ucs.length : start + batchSize;
+      final batch = await Future.wait([
+        for (final uc in ucs.sublist(start, end)) _pointsOrEmpty(cnic, uc.id),
+      ]);
+      for (final points in batch) {
+        merged.addAll(points);
+      }
+    }
+    final seen = <int>{};
+    final unique = <AttendancePoint>[];
+    for (final point in merged) {
+      if (seen.add(point.id)) unique.add(point);
+    }
+    unique.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return unique;
+  }
+
+  Future<List<AttendancePoint>> _pointsOrEmpty(String cnic, int ucZoneId) async {
+    try {
+      return await attendancePoints(cnic, ucZoneId);
+    } on SupervisorException {
+      return const [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> faceEmployees(String cnic) async {

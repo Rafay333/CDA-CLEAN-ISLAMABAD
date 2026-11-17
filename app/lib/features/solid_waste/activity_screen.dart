@@ -385,22 +385,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _loadVehicles(session.cnic, zoneCode: value, token: token);
     try {
       final api = SupervisorApi();
-      var rows = await api.containers(session.cnic, zoneCode: value);
-      // Fallback: aggregate containers from sites if zone endpoint is empty/unavailable.
-      if (rows.isEmpty && _zoneStill(token, value)) {
-        try {
-          final sites = await api.primarySites(session.cnic, zoneCode: value);
-          final batches = await Future.wait([
-            for (final site in sites) api.containersForPrimarySite(session.cnic, site.id),
-          ]);
-          final seen = <int>{};
-          rows = [
-            for (final batch in batches)
-              for (final item in batch.items)
-                if (seen.add(item.containerId)) item,
-          ];
-        } catch (_) {}
-      }
+      // The zone list leaves out containers that are already 1/1.
+      // Activity shows those collected containers, loaded from their sites.
+      final fetched = List<TaggingContainer>.of(
+        await api.containers(session.cnic, zoneCode: value),
+      );
+      if (!_zoneStill(token, value)) return;
+      final rows = await _collectedContainers(session.cnic, value, fetched);
       if (!_zoneStill(token, value)) return;
       rows.sort((a, b) => a.containerName.compareTo(b.containerName));
       setState(() {
@@ -428,6 +419,34 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _error = 'Could not load containers for this zone.';
       });
     }
+  }
+
+  /// Containers whose Container Collection/Clearance is already saved (1/1).
+  Future<List<TaggingContainer>> _collectedContainers(
+    String cnic,
+    String zoneCode,
+    List<TaggingContainer> zoneRows,
+  ) async {
+    final api = SupervisorApi();
+    final sites = await api.primarySites(cnic, zoneCode: zoneCode);
+    final batches = await Future.wait([
+      for (final site in sites)
+        () async {
+          try {
+            return (await api.containersForPrimarySite(cnic, site.id)).items;
+          } catch (_) {
+            return const <TaggingContainer>[];
+          }
+        }(),
+    ]);
+    final seen = <int>{};
+    return [
+      for (final item in zoneRows)
+        if (item.activityDone && seen.add(item.containerId)) item,
+      for (final batch in batches)
+        for (final item in batch)
+          if (item.activityDone && seen.add(item.containerId)) item,
+    ];
   }
 
   Future<void> _loadVehicles(String cnic, {required String zoneCode, required int token}) async {

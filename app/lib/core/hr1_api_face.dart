@@ -112,8 +112,7 @@ class Hr1ApiFace {
             'lng': longitude.toString(),
             'accuracy': accuracy.toString(),
             'mock': mock.toString(),
-            if (attendancePointId != null && attendancePointId > 0)
-              'attendance_point_id': '$attendancePointId',
+            if (attendancePointId != null) 'attendance_point_id': '$attendancePointId',
             if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
             'image0': MultipartFile.fromBytes(photos[0], filename: 'image0.jpg'),
             'image1': MultipartFile.fromBytes(photos[1], filename: 'image1.jpg'),

@@ -168,10 +168,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         if (i > 0) const SizedBox(height: 10),
                         _ReportTile(
                           icon: Icons.assignment_outlined,
-                          title: records.items[i].kind.isEmpty
-                              ? 'Record ${records.items[i].id}'
-                              : records.items[i].kind,
-                          subtitle: records.items[i].remarks ?? records.items[i].date,
+                          title: _recordTitle(records.items[i]),
+                          subtitle: _recordSubtitle(records.items[i]),
                           badge: records.items[i].status.isEmpty
                               ? 'Saved'
                               : records.items[i].status,
@@ -249,6 +247,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
       ),
     );
+  }
+
+  String _recordTitle(FieldRecordSummary item) {
+    final container = item.containerName?.trim() ?? '';
+    if (item.isContainerActivity && container.isNotEmpty) return container;
+    final activity = item.activity?.trim() ?? '';
+    if (activity.isNotEmpty) return activity;
+    if (item.kind.isEmpty) return 'Record ${item.id}';
+    return item.kind;
+  }
+
+  String _recordSubtitle(FieldRecordSummary item) {
+    if (item.isContainerActivity) {
+      final activity = item.activity?.trim() ?? '';
+      if (activity.isNotEmpty) return activity;
+    }
+    final remarks = item.remarks?.trim() ?? '';
+    if (remarks.isNotEmpty) return remarks;
+    return item.date;
   }
 }
 

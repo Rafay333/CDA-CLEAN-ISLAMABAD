@@ -85,6 +85,7 @@ class Hr1ApiManual {
     required double longitude,
     required double accuracy,
     required bool mock,
+    int? attendancePointId,
     String? note,
   }) async {
     final data = _map(
@@ -99,6 +100,7 @@ class Hr1ApiManual {
             'lng': longitude.toString(),
             'accuracy': accuracy.toString(),
             'mock': mock.toString(),
+            if (attendancePointId != null) 'attendance_point_id': '$attendancePointId',
             if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
             'image': MultipartFile.fromBytes(photo, filename: 'selfie.jpg'),
           }),

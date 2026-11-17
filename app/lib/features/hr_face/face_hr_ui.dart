@@ -101,6 +101,9 @@ class FaceHrWorkerPicker extends StatelessWidget {
     this.subtitle,
     this.onTap,
     this.enabled = true,
+    this.icon = Icons.person_rounded,
+    this.idleIcon = Icons.person_search_rounded,
+    this.emptyHint = 'Search by name or CNIC',
   });
 
   final String? name;
@@ -108,6 +111,9 @@ class FaceHrWorkerPicker extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onTap;
   final bool enabled;
+  final IconData icon;
+  final IconData idleIcon;
+  final String emptyHint;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +154,7 @@ class FaceHrWorkerPicker extends StatelessWidget {
                     ),
                   ),
                   child: Icon(
-                    selected ? Icons.person_rounded : Icons.person_search_rounded,
+                    selected ? icon : idleIcon,
                     color: selected ? Colors.white : FaceHrPalette.muted,
                     size: 26,
                   ),
@@ -174,8 +180,8 @@ class FaceHrWorkerPicker extends StatelessWidget {
                             ? (subtitle?.trim().isNotEmpty == true
                                 ? subtitle!
                                 : 'Tap to choose another worker')
-                            : 'Search by name or CNIC',
-                        maxLines: 1,
+                            : emptyHint,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppType.caption.copyWith(color: FaceHrPalette.muted),
                       ),

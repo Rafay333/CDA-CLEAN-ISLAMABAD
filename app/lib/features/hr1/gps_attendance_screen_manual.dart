@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' show Position;
 
 import '../../components/components.dart';
+import '../../core/attendance_duty.dart';
 import '../../core/hr1_api_manual.dart';
 import '../../core/supervisor_api.dart';
 import '../../state/app_state.dart';
 import '../../utils/display_format.dart';
+import '../hr/duty_point_section.dart';
 import '../hr_face/face_hr_ui.dart';
 import 'photo_capture_page_manual.dart';
 import 'photo_registration_screen_manual.dart';
@@ -22,6 +24,9 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
   final _people = SupervisorApi();
   final _api = Hr1ApiManual();
   List<Map<String, dynamic>> _employees = [];
+  List<SupervisorUc> _ucs = [];
+  List<AttendancePoint> _points = [];
+  bool _pointsLoading = false;
   Map<String, dynamic>? _selected;
   Map<String, dynamic>? _registration;
   bool _registered = false;
@@ -56,11 +61,14 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
       final session = AppStateScope.read(context).session;
       if (session == null) throw SupervisorException('Sign in again.');
       final rows = await _people.faceEmployees(session.cnic);
+      final ucs = await _people.supervisorUcs(session.cnic);
       if (!mounted) return;
       setState(() {
         _employees = rows;
+        _ucs = ucs;
         _loading = false;
       });
+      await _loadPoints();
       if (_selected != null) await _loadToday();
     } on SupervisorException catch (error) {
       if (!mounted) return;
@@ -135,15 +143,40 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
     }
   }
 
-  String get _nextType {
-    final latest = _today.isEmpty ? null : _today.first['type']?.toString();
-    return latest == 'check_in' ? 'check_out' : 'check_in';
+  bool get _checkOut => attendanceHasCheckIn(_today);
+
+  String? _ucLabelFor(AttendancePoint point) {
+    for (final uc in _ucs) {
+      if (uc.id == point.ucZoneId) return uc.label;
+    }
+    return null;
+  }
+
+  Future<void> _loadPoints() async {
+    final session = AppStateScope.read(context).session;
+    if (session == null) return;
+    setState(() => _pointsLoading = true);
+    try {
+      final points = await _people.attendancePointsAcross(session.cnic, _ucs);
+      if (!mounted) return;
+      setState(() {
+        _points = points;
+        _pointsLoading = false;
+      });
+    } on SupervisorException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _pointsLoading = false;
+        _message = error.message;
+        _tone = InlineTone.error;
+      });
+    }
   }
 
   Future<void> _attend() async {
     final selected = _selected;
     if (selected == null || _saving || !_registered) return;
-    final type = _nextType;
+    final checkOut = _checkOut;
     setState(() {
       _saving = true;
       _message = 'Turn on location for this photo.';
@@ -180,7 +213,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
       final result = await _api.markAttendance(
         cnic: session.cnic,
         employeeId: _id(selected),
-        type: type,
+        type: checkOut ? 'check_out' : 'check_in',
         photo: shot.bytes!,
         latitude: position.latitude,
         longitude: position.longitude,
@@ -271,7 +304,7 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
     final cnicNo = '${selected?['cnic'] ?? ''}'.trim();
     final shift = '${_registration?['shift'] ?? selected?['shift'] ?? ''}'.trim();
     final contact = '${selected?['contact'] ?? ''}'.trim();
-    final checkOut = _nextType == 'check_out';
+    final checkOut = _checkOut;
     final photoUrl = _registered
         ? _api.absolute(
             _registration?['photo_url']?.toString() ??
@@ -302,6 +335,12 @@ class _GpsAttendanceScreenManualState extends State<GpsAttendanceScreenManual> {
                   InlineMessage(message: _error!, tone: InlineTone.error),
                   const SizedBox(height: 12),
                 ],
+                DutyPointNotice(
+                  points: _points,
+                  ucLabel: _ucLabelFor,
+                  loading: _pointsLoading,
+                ),
+                const SizedBox(height: 10),
                 FaceHrWorkerPicker(
                   name: selected == null ? null : (name.isEmpty ? 'Worker' : name),
                   hint: 'Select worker',
