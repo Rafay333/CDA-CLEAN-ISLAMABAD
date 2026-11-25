@@ -17,14 +17,13 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  List<SupervisorIssue> _issues = const [];
-  EvidenceDay? _evidence;
-  FieldRecordDay? _records;
+  int _recordCount = 0;
+  int _attendanceMarked = 0;
+  int _attendanceTeam = 0;
   String? _error;
   bool _loading = true;
-  bool _wantIssues = false;
-  bool _wantEvidence = false;
   bool _wantRecords = false;
+  bool _wantAttendance = false;
 
   @override
   void initState() {
@@ -43,58 +42,65 @@ class _ReportsScreenState extends State<ReportsScreen> {
       });
       return;
     }
-    final wantIssues = session.can(StaffCapability.resolveIssues);
-    final wantEvidence = session.can(StaffCapability.submitEvidence);
     final wantRecords =
         session.can(StaffCapability.serveContainers) || session.canUseOtherFieldRecords;
+    final wantAttendance = session.can(StaffCapability.markAttendance) ||
+        session.can(StaffCapability.manageHr) ||
+        wantRecords;
     setState(() {
       _loading = true;
       _error = null;
-      _wantIssues = wantIssues;
-      _wantEvidence = wantEvidence;
       _wantRecords = wantRecords;
+      _wantAttendance = wantAttendance;
     });
-    if (!wantIssues && !wantEvidence && !wantRecords) {
+    if (!wantRecords && !wantAttendance) {
       setState(() {
-        _issues = const [];
-        _evidence = null;
-        _records = null;
+        _recordCount = 0;
+        _attendanceMarked = 0;
+        _attendanceTeam = 0;
         _loading = false;
       });
       return;
     }
     final api = SupervisorApi();
     final errors = <String>[];
-    var issues = const <SupervisorIssue>[];
-    EvidenceDay? evidence;
-    FieldRecordDay? records;
-    if (wantIssues) {
-      try {
-        issues = await api.issues(session.cnic);
-      } on SupervisorException catch (error) {
-        errors.add(error.message);
-      }
-    }
-    if (wantEvidence) {
-      try {
-        evidence = await api.evidence(session.cnic);
-      } on SupervisorException catch (error) {
-        errors.add(error.message);
-      }
-    }
+    var recordCount = 0;
+    var attendanceMarked = 0;
+    var attendanceTeam = 0;
     if (wantRecords) {
       try {
-        records = await api.fieldRecords(session.cnic);
+        final records = await api.fieldRecords(
+          session.cnic,
+          mineOnly: true,
+          session: session,
+        );
+        recordCount = records.items.length;
+      } on SupervisorException catch (error) {
+        errors.add(error.message);
+      }
+    }
+    if (wantAttendance) {
+      try {
+        final rows = await api.attendance(session.cnic);
+        attendanceTeam = rows.length;
+        attendanceMarked = rows
+            .where(
+              (row) =>
+                  (row.checkIn ?? '').trim().isNotEmpty ||
+                  (row.checkOut ?? '').trim().isNotEmpty ||
+                  row.present,
+            )
+            .length;
       } on SupervisorException catch (error) {
         errors.add(error.message);
       }
     }
     if (!mounted) return;
-    final attempted = (wantIssues ? 1 : 0) + (wantEvidence ? 1 : 0) + (wantRecords ? 1 : 0);
+    final attempted = (wantRecords ? 1 : 0) + (wantAttendance ? 1 : 0);
     setState(() {
-      _issues = issues;
-      _evidence = evidence;
-      _records = records;
+      _recordCount = recordCount;
+      _attendanceMarked = attendanceMarked;
+      _attendanceTeam = attendanceTeam;
       _loading = false;
       _error = errors.length >= attempted && errors.isNotEmpty ? errors.first : null;
     });
@@ -102,13 +108,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final evidence = _evidence;
-    final records = _records;
-    final recordCount = records?.items.length ?? 0;
-    final evidenceCount = evidence?.items.length ?? 0;
-    final openCount = _issues.where((issue) => !issue.resolved).length;
-    final resolvedCount = _issues.where((issue) => issue.resolved).length;
-    final hasAny = _issues.isNotEmpty || recordCount > 0 || evidenceCount > 0;
+    final hasAny = _wantAttendance || _wantRecords;
 
     return AppPage(
       title: 'Reports',
@@ -130,9 +130,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           children: [
             const ModuleHero(
               icon: Icons.assessment_outlined,
-              title: 'Today’s field reports',
-              subtitle:
-                  'Field records, pictorial evidence and complaints linked to your supervisor account.',
+              title: 'Today’s reports',
+              subtitle: 'Team attendance you marked, and field records you posted.',
               colors: ModulePalette.reports,
             ),
             const SizedBox(height: 16),
@@ -144,104 +143,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
               OutlineButton(label: 'Try again', onPressed: _load),
             ] else ...[
               _SummaryStrip(
-                records: _wantRecords ? recordCount : null,
-                evidence: _wantEvidence ? evidenceCount : null,
-                open: _wantIssues ? openCount : null,
-                resolved: _wantIssues ? resolvedCount : null,
+                records: _wantRecords ? _recordCount : null,
+                attendance: _wantAttendance ? _attendanceMarked : null,
               ),
               const SizedBox(height: 16),
               if (!hasAny)
                 const EmptyState(
                   icon: Icons.assessment_outlined,
                   title: 'No reports yet',
-                  message:
-                      'Complaints, field records, and evidence saved today will show here.',
+                  message: 'Attendance and your posted records will show here.',
                 ),
-              if (records != null && records.items.isNotEmpty) ...[
+              if (_wantAttendance) ...[
                 ModulePanel(
-                  title: 'Field records',
-                  subtitle: records.date,
+                  title: 'Attendance',
+                  accent: ModulePalette.profileAccent,
+                  child: _ReportTile(
+                    icon: Icons.fingerprint_rounded,
+                    title: 'Attendance',
+                    subtitle: _attendanceTeam == 0
+                        ? 'Tap to view employees you marked'
+                        : '$_attendanceMarked of $_attendanceTeam marked · tap to view',
+                    badge: _attendanceBadge,
+                    badgeColor: _attendanceBadgeColor,
+                    onTap: () => context.push(AppRoutes.reportAttendanceDetails),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (_wantRecords) ...[
+                ModulePanel(
+                  title: 'Records',
                   accent: ModulePalette.reportsAccent,
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < records.items.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 10),
-                        _ReportTile(
-                          icon: Icons.assignment_outlined,
-                          title: _recordTitle(records.items[i]),
-                          subtitle: _recordSubtitle(records.items[i]),
-                          badge: records.items[i].status.isEmpty
-                              ? 'Saved'
-                              : records.items[i].status,
-                          badgeColor: AppColors.success,
-                        ),
-                      ],
-                    ],
+                  child: _ReportTile(
+                    icon: Icons.assignment_outlined,
+                    title: 'Records',
+                    subtitle: _recordCount == 0
+                        ? 'Tap to view records you submitted'
+                        : '$_recordCount submitted · tap to view',
+                    badge: _recordCount == 0 ? 'None' : '$_recordCount',
+                    badgeColor: _recordCount == 0 ? AppColors.warning : AppColors.success,
+                    onTap: () => context.push(AppRoutes.reportRecords),
                   ),
                 ),
-                const SizedBox(height: 14),
               ],
-              if (evidence != null && evidence.items.isNotEmpty) ...[
-                ModulePanel(
-                  title: 'Evidence',
-                  subtitle: evidence.date,
-                  accent: ModulePalette.wasteAccent,
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < evidence.items.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 10),
-                        _ReportTile(
-                          icon: Icons.photo_camera_outlined,
-                          title: evidence.items[i].activity.isEmpty
-                              ? 'Evidence ${evidence.items[i].id}'
-                              : evidence.items[i].activity,
-                          subtitle:
-                              evidence.items[i].geoTag ?? evidence.items[i].dateCaptured,
-                          badge: 'Saved',
-                          badgeColor: AppColors.success,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-              if (_issues.isNotEmpty)
-                ModulePanel(
-                  title: 'Complaints',
-                  subtitle: '${_issues.length} total · $openCount open',
-                  accent: ModulePalette.complaintsAccent,
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < _issues.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 10),
-                        _ReportTile(
-                          icon: Icons.report_outlined,
-                          title: _issues[i].activity.isEmpty
-                              ? 'Complaint ${_issues[i].id}'
-                              : _issues[i].activity,
-                          subtitle: _issues[i].description.isEmpty
-                              ? _issues[i].sector
-                              : _issues[i].description,
-                          badge: _issues[i].resolved
-                              ? 'Resolved'
-                              : _issues[i].inProcessing
-                                  ? 'In Processing'
-                                  : 'Pending',
-                          badgeColor: _issues[i].resolved
-                              ? AppColors.success
-                              : _issues[i].inProcessing
-                                  ? AppColors.warning
-                                  : AppColors.info,
-                          onTap: () {
-                            AppStateScope.read(context).openIssue(_issues[i]);
-                            context.push(AppRoutes.complaintDetails);
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
             ],
           ],
         ),
@@ -249,46 +193,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  String _recordTitle(FieldRecordSummary item) {
-    final container = item.containerName?.trim() ?? '';
-    if (item.isContainerActivity && container.isNotEmpty) return container;
-    final activity = item.activity?.trim() ?? '';
-    if (activity.isNotEmpty) return activity;
-    if (item.kind.isEmpty) return 'Record ${item.id}';
-    return item.kind;
+  String get _attendanceBadge {
+    if (_attendanceMarked > 0) return '$_attendanceMarked';
+    return 'None';
   }
 
-  String _recordSubtitle(FieldRecordSummary item) {
-    if (item.isContainerActivity) {
-      final activity = item.activity?.trim() ?? '';
-      if (activity.isNotEmpty) return activity;
-    }
-    final remarks = item.remarks?.trim() ?? '';
-    if (remarks.isNotEmpty) return remarks;
-    return item.date;
+  Color get _attendanceBadgeColor {
+    if (_attendanceMarked > 0) return AppColors.success;
+    return AppColors.warning;
   }
 }
 
 class _SummaryStrip extends StatelessWidget {
   const _SummaryStrip({
     required this.records,
-    required this.evidence,
-    required this.open,
-    required this.resolved,
+    required this.attendance,
   });
 
   final int? records;
-  final int? evidence;
-  final int? open;
-  final int? resolved;
+  final int? attendance;
 
   @override
   Widget build(BuildContext context) {
     final stats = <({String label, int value, Color color})>[
       if (records != null) (label: 'Records', value: records!, color: ModulePalette.reportsAccent),
-      if (evidence != null) (label: 'Evidence', value: evidence!, color: ModulePalette.wasteAccent),
-      if (open != null) (label: 'Open', value: open!, color: AppColors.warning),
-      if (resolved != null) (label: 'Done', value: resolved!, color: AppColors.success),
+      if (attendance != null) (label: 'Attendance', value: attendance!, color: ModulePalette.profileAccent),
     ];
     if (stats.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -301,15 +230,13 @@ class _SummaryStrip extends StatelessWidget {
       child: Row(
         children: [
           for (var i = 0; i < stats.length; i++) ...[
-            if (i > 0) _divider(),
+            if (i > 0) Container(width: 1, height: 58, color: ModulePalette.line),
             _Stat(label: stats[i].label, value: stats[i].value, color: stats[i].color),
           ],
         ],
       ),
     );
   }
-
-  Widget _divider() => Container(width: 1, height: 58, color: ModulePalette.line);
 }
 
 class _Stat extends StatelessWidget {
@@ -350,7 +277,7 @@ class _ReportTile extends StatelessWidget {
     required this.subtitle,
     required this.badge,
     required this.badgeColor,
-    this.onTap,
+    required this.onTap,
   });
 
   final IconData icon;
@@ -358,7 +285,7 @@ class _ReportTile extends StatelessWidget {
   final String subtitle;
   final String badge;
   final Color badgeColor;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -404,10 +331,8 @@ class _ReportTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               ModuleStatusChip(label: badge, color: badgeColor),
-              if (onTap != null) ...[
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded, color: ModulePalette.muted, size: 20),
-              ],
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, color: ModulePalette.muted, size: 20),
             ],
           ),
         ),

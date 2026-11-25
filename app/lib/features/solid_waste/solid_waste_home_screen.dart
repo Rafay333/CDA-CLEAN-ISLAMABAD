@@ -51,7 +51,6 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
   Widget build(BuildContext context) {
     final session = AppStateScope.of(context).session;
     final containers = session?.can(StaffCapability.serveContainers) == true;
-    final evidence = session?.can(StaffCapability.submitEvidence) == true;
     final otherRecords = session?.canUseOtherFieldRecords == true;
     final cards = <Widget>[
       if (containers || otherRecords)
@@ -74,30 +73,10 @@ class _SolidWasteHomeScreenState extends State<SolidWasteHomeScreen> {
           subtitle: 'Zone → site → container type → GPS + photo.',
           onTap: () => context.push(AppRoutes.wasteTagging),
         ),
-      if (evidence)
-        ModuleMenuCard(
-          icon: Icons.photo_camera_outlined,
-          accent: const Color(0xFF0369A1),
-          badge: const Color(0xFFE0F2FE),
-          title: 'PED evidence',
-          subtitle: 'Upload today’s pictorial evidence.',
-          onTap: () => context.push(AppRoutes.wasteEvidenceUpload),
-        ),
-      if (evidence)
-        ModuleMenuCard(
-          icon: Icons.photo_library_outlined,
-          accent: const Color(0xFF0F766E),
-          badge: const Color(0xFFE5F6F4),
-          title: 'Evidence history',
-          subtitle: 'Photos already saved for a day.',
-          onTap: () => context.push(AppRoutes.wasteEvidenceHistory),
-        ),
     ];
-    final subtitle = containers && !otherRecords && !evidence
-        ? 'Record container clearance with before and after photos.'
-        : otherRecords
-            ? 'Record daily activity with before/after photos, or tag containers with live GPS.'
-            : 'Upload pictorial evidence for the day.';
+    final subtitle = otherRecords
+        ? 'Record daily activity with before/after photos, or tag containers with live GPS.'
+        : 'Record container clearance with before and after photos.';
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(

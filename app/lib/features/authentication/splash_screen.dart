@@ -21,7 +21,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _progress = AnimationController(vsync: this, duration: const Duration(seconds: 5));
+    _progress = AnimationController(vsync: this, duration: const Duration(seconds: 2));
     _progress.addStatusListener((status) async {
       if (status != AnimationStatus.completed || !mounted) return;
       await AppStateScope.read(context).ready;

@@ -65,6 +65,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   static const _inventorySize1_1 = '1.1 m3';
   static const _inventorySize8 = '8 m3';
 
+  /// Clearance must be within this radius of PrimarySites.Latitude/Longitude.
+  static const _clearanceRadiusMeters = 100.0;
+
   late final TextEditingController _remarks;
   /// True only after the worker types in remarks for the current stop.
   /// Stops a leftover "cl" from a previous container being submitted again.
@@ -74,6 +77,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   List<String> _zones = const [];
   List<TaggingContainer> _containers = const [];
   List<CatalogVehicle> _vehicles = const [];
+
+  /// PrimarySites.Latitude/Longitude by PrimarySiteId (preloaded with the zone).
+  Map<int, ({double lat, double lng})> _siteCoordsById = const {};
 
   bool _loadingCatalog = true;
   bool _loadingContainers = false;
@@ -203,6 +209,73 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   bool get _gpsReady =>
       (_lat?.trim().isNotEmpty ?? false) && (_lng?.trim().isNotEmpty ?? false);
+
+  /// PrimarySites pin for the selected container (table Latitude/Longitude).
+  ({double lat, double lng})? _primarySitePin([TaggingContainer? container]) {
+    final item = container ?? _container;
+    if (item == null) return null;
+    final siteLat = item.primarySiteLat;
+    final siteLng = item.primarySiteLng;
+    if (siteLat != null && siteLng != null) {
+      return (lat: siteLat, lng: siteLng);
+    }
+    final siteId = item.primarySiteId;
+    if (siteId == null) return null;
+    return _siteCoordsById[siteId];
+  }
+
+  /// Instant local distance check — no extra GPS or network.
+  /// Returns null when within radius (or not applicable). Otherwise the message.
+  String? _clearanceDistanceMessage({required bool hard}) {
+    if (!_isContainerFlow || _container == null) return null;
+    if (!_gpsReady) {
+      return hard ? 'Fetch your current GPS location.' : null;
+    }
+    final liveLat = double.tryParse(_lat!.trim());
+    final liveLng = double.tryParse(_lng!.trim());
+    if (liveLat == null || liveLng == null) {
+      return hard ? 'Fetch your current GPS location.' : null;
+    }
+    final site = _primarySitePin();
+    if (site == null) {
+      return hard
+          ? 'This container site has no coordinates. Clearance cannot be submitted.'
+          : 'This container site has no coordinates in Primary Sites.';
+    }
+    final meters = metersBetweenCoords(liveLat, liveLng, site.lat, site.lng);
+    if (meters <= _clearanceRadiusMeters) return null;
+    final shown = meters >= 1000
+        ? '${(meters / 1000).toStringAsFixed(2)} km'
+        : '${meters.round()} m';
+    return 'You are far from this container location. '
+        'Distance: $shown (must be within ${_clearanceRadiusMeters.round()} m).';
+  }
+
+  /// Soft warning after GPS / container pick. Does not block.
+  void _warnIfFarFromContainer() {
+    final message = _clearanceDistanceMessage(hard: false);
+    if (message != null) _snack(message);
+  }
+
+  /// Hard block before continue / submit.
+  bool _blockIfFarFromContainer() {
+    final message = _clearanceDistanceMessage(hard: true);
+    if (message == null) return false;
+    _snack(message);
+    return true;
+  }
+
+  TaggingContainer _withPrimarySiteCoords(
+    TaggingContainer item,
+    Map<int, ({double lat, double lng})> siteCoords,
+  ) {
+    if (item.siteLatitude != null && item.siteLongitude != null) return item;
+    final siteId = item.primarySiteId;
+    if (siteId == null) return item;
+    final pin = siteCoords[siteId];
+    if (pin == null) return item;
+    return item.copyWith(siteLatitude: pin.lat, siteLongitude: pin.lng);
+  }
 
   bool _matchesActivity(CatalogActivity selected, String code, String name) {
     return selected.code == code || selected.name == name;
@@ -337,6 +410,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
+      _siteCoordsById = const {};
       _error = null;
       _wipeVisitFields();
     });
@@ -358,6 +432,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _beforePhotos.clear();
       _afterPhotos.clear();
       _containers = const [];
+      _siteCoordsById = const {};
       _loadingContainers = _isContainerFlow;
       _loadingVehicles = _isContainerFlow;
       _error = null;
@@ -385,19 +460,37 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _loadVehicles(session.cnic, zoneCode: value, token: token);
     try {
       final api = SupervisorApi();
+      // Load PrimarySites coords once with the zone list (fast local geofence later).
+      final sitesFuture = api.primarySites(session.cnic, zoneCode: value);
+      final fetchedFuture = api.containers(session.cnic, zoneCode: value);
+      final sites = await sitesFuture;
+      if (!_zoneStill(token, value)) return;
+      final siteCoords = <int, ({double lat, double lng})>{
+        for (final site in sites)
+          if (site.latitude != null && site.longitude != null)
+            site.id: (lat: site.latitude!, lng: site.longitude!),
+      };
       // The zone list leaves out containers that are already 1/1.
       // Activity shows those collected containers, loaded from their sites.
-      final fetched = List<TaggingContainer>.of(
-        await api.containers(session.cnic, zoneCode: value),
+      final fetched = List<TaggingContainer>.of(await fetchedFuture);
+      if (!_zoneStill(token, value)) return;
+      final rows = await _collectedContainers(
+        session.cnic,
+        value,
+        fetched,
+        sites: sites,
+        siteCoords: siteCoords,
       );
       if (!_zoneStill(token, value)) return;
-      final rows = await _collectedContainers(session.cnic, value, fetched);
-      if (!_zoneStill(token, value)) return;
-      rows.sort((a, b) => a.containerName.compareTo(b.containerName));
+      final enriched = [
+        for (final item in rows) _withPrimarySiteCoords(item, siteCoords),
+      ]..sort((a, b) => a.containerName.compareTo(b.containerName));
       setState(() {
-        _containers = rows;
+        _siteCoordsById = siteCoords;
+        _containers = enriched;
         _loadingContainers = false;
-        if (_container != null && !rows.any((item) => item.containerId == _container!.containerId)) {
+        if (_container != null &&
+            !enriched.any((item) => item.containerId == _container!.containerId)) {
           _container = null;
           _containerType = null;
           _beforePhotos.clear();
@@ -405,7 +498,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           _wipeVisitFields();
         }
       });
-      if (rows.isEmpty) _snack('No containers found for $value.');
+      if (enriched.isEmpty) _snack('No containers found for $value.');
     } on SupervisorException catch (error) {
       if (!_zoneStill(token, value)) return;
       setState(() {
@@ -425,10 +518,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
   Future<List<TaggingContainer>> _collectedContainers(
     String cnic,
     String zoneCode,
-    List<TaggingContainer> zoneRows,
-  ) async {
+    List<TaggingContainer> zoneRows, {
+    required List<TaggingPrimarySite> sites,
+    required Map<int, ({double lat, double lng})> siteCoords,
+  }) async {
     final api = SupervisorApi();
-    final sites = await api.primarySites(cnic, zoneCode: zoneCode);
     final batches = await Future.wait([
       for (final site in sites)
         () async {
@@ -440,12 +534,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
         }(),
     ]);
     final seen = <int>{};
+    // Keep every zone container, then add 1/1 rows the zone list left out.
     return [
       for (final item in zoneRows)
-        if (item.activityDone && seen.add(item.containerId)) item,
+        if (seen.add(item.containerId)) _withPrimarySiteCoords(item, siteCoords),
       for (final batch in batches)
         for (final item in batch)
-          if (item.activityDone && seen.add(item.containerId)) item,
+          if (item.activityDone && seen.add(item.containerId))
+            _withPrimarySiteCoords(item, siteCoords),
     ];
   }
 
@@ -607,10 +703,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final token = ++_containerToken;
     final changed = _container?.containerId != picked.containerId;
     if (changed) _fixRequest?.cancel();
+    final withSite = _withPrimarySiteCoords(picked, _siteCoordsById);
     setState(() {
-      _container = picked;
-      _containerType = picked.containerType;
-      _resolvingType = picked.containerType == null || picked.containerType!.isEmpty;
+      _container = withSite;
+      _containerType = withSite.containerType;
+      _resolvingType = withSite.containerType == null || withSite.containerType!.isEmpty;
       // Never inherit another stop's vehicle/remarks. GPS only resets when the
       // container actually changes (re-tapping the same row must not blank GPS).
       _wipeVehicle();
@@ -622,7 +719,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _wipeFix();
       }
     });
-    if (changed) _locate();
+    if (changed) {
+      _locate();
+    } else if (_gpsReady) {
+      _warnIfFarFromContainer();
+    }
     if (!_resolvingType) return;
     final session = AppStateScope.read(context).session;
     if (session == null) {
@@ -631,14 +732,30 @@ class _ActivityScreenState extends State<ActivityScreen> {
       return;
     }
     try {
-      final detail = await SupervisorApi().containerDetail(session.cnic, picked.containerId);
-      if (!mounted || token != _containerToken || _container?.containerId != picked.containerId) return;
+      final detail = await SupervisorApi().containerDetail(session.cnic, withSite.containerId);
+      if (!mounted || token != _containerToken || _container?.containerId != withSite.containerId) {
+        return;
+      }
+      final merged = _withPrimarySiteCoords(
+        withSite.copyWith(
+          containerType: detail.containerType ?? withSite.containerType,
+          primarySiteId: detail.primarySiteId ?? withSite.primarySiteId,
+          primarySiteName: detail.primarySiteName ?? withSite.primarySiteName,
+          siteLatitude: detail.siteLatitude ?? withSite.siteLatitude,
+          siteLongitude: detail.siteLongitude ?? withSite.siteLongitude,
+        ),
+        _siteCoordsById,
+      );
       setState(() {
-        _containerType = detail.containerType ?? _containerType;
+        _container = merged;
+        _containerType = merged.containerType ?? _containerType;
         _resolvingType = false;
       });
+      if (_gpsReady) _warnIfFarFromContainer();
     } catch (_) {
-      if (!mounted || token != _containerToken || _container?.containerId != picked.containerId) return;
+      if (!mounted || token != _containerToken || _container?.containerId != withSite.containerId) {
+        return;
+      }
       setState(() => _resolvingType = false);
     }
   }
@@ -675,6 +792,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _snack('Fetch your current GPS location.');
       return;
     }
+    if (_blockIfFarFromContainer()) return;
     if (uploadPhotos(_beforePhotos).isEmpty) {
       _snack('Add at least one before picture.');
       return;
@@ -764,6 +882,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _fixZone = _zone;
         _fixFromPhoto = fromPhoto;
       });
+      if (announce) _warnIfFarFromContainer();
       return true;
     } on FreshFixCancelled {
       if (mounted && token == _fixToken) setState(() => _locating = false);
@@ -951,6 +1070,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     // Fresh GPS first, then confirm the exact values that will be saved.
     if (!await _captureFixForSave()) return;
     if (!mounted) return;
+    if (_blockIfFarFromContainer()) return;
     if (_isContainerFlow && _shouldAvoidLastPin() && _pinMatchesLastSave()) {
       _wipeFix();
       _snack(
@@ -1025,6 +1145,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
         if (!await _captureFixForSave()) return;
         if (!mounted) return;
       }
+      // Hard geofence: live GPS vs PrimarySites lat/long (local math only).
+      if (_blockIfFarFromContainer()) return;
       // Re-check after the GPS wait — container/vehicle can change meanwhile.
       if (_isContainerFlow && !_vehicleReady) {
         _snack('Select the vehicle used for this container.');

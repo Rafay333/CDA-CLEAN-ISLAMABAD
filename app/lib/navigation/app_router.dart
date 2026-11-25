@@ -26,6 +26,9 @@ import '../features/hr_face/hr_face_home_screen.dart';
 import '../features/hr_face/photo_registration_screen_face.dart';
 import '../features/profile/profile_details_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/reports/report_attendance_details_screen.dart';
+import '../features/reports/report_record_details_screen.dart';
+import '../features/reports/report_records_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/solid_waste/activity_screen.dart';
 import '../features/solid_waste/evidence_history_screen.dart';
@@ -161,6 +164,24 @@ GoRouter createAppRouter(AppState appState) {
       GoRoute(
         path: AppRoutes.recordDetails,
         builder: (context, state) => const RecordDetailsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.reportRecordDetails,
+        builder: (context, state) {
+          final extra = state.extra;
+          final id = extra is int
+              ? extra
+              : int.tryParse('${extra ?? ''}') ?? 0;
+          return ReportRecordDetailsScreen(recordId: id);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.reportRecords,
+        builder: (context, state) => const ReportRecordsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.reportAttendanceDetails,
+        builder: (context, state) => const ReportAttendanceDetailsScreen(),
       ),
       GoRoute(
         path: AppRoutes.complaints,

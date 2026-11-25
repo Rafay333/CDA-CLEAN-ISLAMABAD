@@ -672,6 +672,44 @@ class TaggingContainer {
   double? get displayLat => latitude ?? siteLatitude;
   double? get displayLng => longitude ?? siteLongitude;
 
+  /// PrimarySites.Latitude / Longitude used for clearance geofencing.
+  double? get primarySiteLat => siteLatitude;
+  double? get primarySiteLng => siteLongitude;
+
+  TaggingContainer copyWith({
+    int? containerId,
+    String? containerName,
+    int? primarySiteId,
+    String? primarySiteName,
+    String? zoneCode,
+    String? containerType,
+    double? latitude,
+    double? longitude,
+    double? siteLatitude,
+    double? siteLongitude,
+    String? tagStatus,
+    bool? isTagged,
+    String? taggingDate,
+    bool? activityDone,
+  }) {
+    return TaggingContainer(
+      containerId: containerId ?? this.containerId,
+      containerName: containerName ?? this.containerName,
+      primarySiteId: primarySiteId ?? this.primarySiteId,
+      primarySiteName: primarySiteName ?? this.primarySiteName,
+      zoneCode: zoneCode ?? this.zoneCode,
+      containerType: containerType ?? this.containerType,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      siteLatitude: siteLatitude ?? this.siteLatitude,
+      siteLongitude: siteLongitude ?? this.siteLongitude,
+      tagStatus: tagStatus ?? this.tagStatus,
+      isTagged: isTagged ?? this.isTagged,
+      taggingDate: taggingDate ?? this.taggingDate,
+      activityDone: activityDone ?? this.activityDone,
+    );
+  }
+
   factory TaggingContainer.fromJson(Map<String, dynamic> json) {
     return TaggingContainer(
       containerId: _int(json['container_id'] ?? json['id']),
@@ -857,6 +895,15 @@ class FieldRecordSummary {
     this.activityCode,
     this.containerId,
     this.containerName,
+    this.zoneCode,
+    this.ucCode,
+    this.geoTag,
+    this.latitude,
+    this.longitude,
+    this.supervisorCnic,
+    this.supervisorName,
+    this.employeeId,
+    this.createdBy,
     this.beforePictures = const [],
     this.afterPictures = const [],
   });
@@ -870,6 +917,15 @@ class FieldRecordSummary {
   final String? activityCode;
   final int? containerId;
   final String? containerName;
+  final String? zoneCode;
+  final String? ucCode;
+  final String? geoTag;
+  final double? latitude;
+  final double? longitude;
+  final String? supervisorCnic;
+  final String? supervisorName;
+  final int? employeeId;
+  final String? createdBy;
   final List<String> beforePictures;
   final List<String> afterPictures;
 
@@ -886,8 +942,64 @@ class FieldRecordSummary {
     return (containerName ?? '').trim().isNotEmpty;
   }
 
+  String? get locationLabel {
+    final tag = (geoTag ?? '').trim();
+    if (tag.isNotEmpty) return tag;
+    if (latitude != null && longitude != null) {
+      return '${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}';
+    }
+    final zone = (zoneCode ?? '').trim();
+    final uc = (ucCode ?? '').trim();
+    if (zone.isNotEmpty && uc.isNotEmpty) return '$zone · $uc';
+    if (zone.isNotEmpty) return zone;
+    if (uc.isNotEmpty) return uc;
+    return null;
+  }
+
+  /// Owner CNIC from VerifiedBy / supervisor fields (e.g. "Bangash (6110117688617)").
+  String get verifiedByCnic => _ownerCnic;
+
+  bool get hasOwnerIdentity =>
+      _ownerCnic.isNotEmpty || (supervisorName ?? '').trim().isNotEmpty;
+
+  /// Match on VerifiedBy / Supervisor CNIC (or name) for the logged-in supervisor.
+  bool submittedBy(SupervisorUser session) {
+    final sessionCnic = _digitsOnly(session.cnic);
+    final rowCnic = _ownerCnic;
+    if (sessionCnic.isNotEmpty && rowCnic.isNotEmpty) return sessionCnic == rowCnic;
+
+    final rowName = (supervisorName ?? '').trim().toLowerCase();
+    final sessionName = session.fullName.trim().toLowerCase();
+    if (rowName.isNotEmpty && sessionName.isNotEmpty) {
+      return rowName == sessionName ||
+          rowName.contains(sessionName) ||
+          sessionName.contains(rowName);
+    }
+    return false;
+  }
+
+  bool isForeignTo(SupervisorUser session) => hasOwnerIdentity && !submittedBy(session);
+
+  String get _ownerCnic {
+    for (final raw in [supervisorCnic, createdBy]) {
+      final cnic = _extractCnic(raw);
+      if (cnic != null) return cnic;
+    }
+    return '';
+  }
+
   factory FieldRecordSummary.fromJson(Map<String, dynamic> json) {
     final containerId = _int(json['container_id'] ?? json['containerId']);
+    final employeeId = _int(
+      json['employee_id'] ??
+          json['employeeId'] ??
+          json['created_by_employee_id'] ??
+          json['submitted_by_employee_id'] ??
+          json['SupervisorEmployeeId'],
+    );
+    final lat = _double(json['latitude'] ?? json['lat']);
+    final lng = _double(json['longitude'] ?? json['long'] ?? json['lng']);
+    final owner = _fieldRecordOwner(json);
     return FieldRecordSummary(
       id: _int(json['id'] ?? json['record_id']),
       kind: _text(json['kind']),
@@ -898,10 +1010,106 @@ class FieldRecordSummary {
       activityCode: _optional(json['activity_code']),
       containerId: containerId == 0 ? null : containerId,
       containerName: _optional(json['container_name']),
+      zoneCode: _optional(json['zone_code'] ?? json['zone']),
+      ucCode: _optional(json['uc_code'] ?? json['uc']),
+      geoTag: _optional(json['geo_tag'] ?? json['geoTag']),
+      latitude: lat,
+      longitude: lng,
+      supervisorCnic: owner.cnic,
+      supervisorName: owner.name,
+      employeeId: employeeId == 0 ? null : employeeId,
+      createdBy: owner.createdBy,
       beforePictures: _paths(json['before_pictures'] ?? json['before']),
       afterPictures: _paths(json['after_pictures'] ?? json['after']),
     );
   }
+}
+
+String _digitsOnly(String value) => value.replaceAll(RegExp(r'\D'), '');
+
+String? _extractCnic(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return null;
+  final digits = _digitsOnly(text);
+  // Pakistani CNIC is 13 digits; also accept longer digit runs that contain one.
+  final match = RegExp(r'\d{13}').firstMatch(digits);
+  if (match != null) return match.group(0);
+  if (digits.length >= 11 && digits.length <= 15) return digits;
+  return null;
+}
+
+({String? cnic, String? name, String? createdBy}) _fieldRecordOwner(Map<String, dynamic> json) {
+  String? cnic;
+  String? name;
+  String? createdBy;
+
+  void takeCnic(Object? value) {
+    if (cnic != null) return;
+    if (value is Map) {
+      takeCnic(value['cnic'] ?? value['Cnic'] ?? value['CNIC'] ?? value['supervisor_cnic']);
+      return;
+    }
+    cnic = _extractCnic(value?.toString());
+  }
+
+  void takeName(Object? value) {
+    if (name != null || value == null) return;
+    if (value is Map) {
+      takeName(value['name'] ?? value['Name'] ?? value['full_name'] ?? value['fullName']);
+      return;
+    }
+    final text = value.toString().trim();
+    if (text.isEmpty || text == 'null') return;
+    // "Nazar Hussain Bangash\n6110117688617" or "Name (cnic)"
+    final withoutCnic = text
+        .replaceAll(RegExp(r'\b\d{5}-?\d{7}-?\d{1}\b'), '')
+        .replaceAll(RegExp(r'\b\d{13}\b'), '')
+        .replaceAll(RegExp(r'[()]'), ' ')
+        .trim();
+    if (withoutCnic.isNotEmpty) name = withoutCnic;
+  }
+
+  // DB column VerifiedBy is the submitting supervisor: "Name (CNIC)".
+  final candidates = <Object?>[
+    json['verified_by'],
+    json['verifiedBy'],
+    json['VerifiedBy'],
+    json['supervisor_cnic'],
+    json['supervisorCnic'],
+    json['SupervisorCnic'],
+    json['submitted_by_cnic'],
+    json['submittedByCnic'],
+    json['SubmittedByCnic'],
+    json['submitted_by'],
+    json['submittedBy'],
+    json['SubmittedBy'],
+    json['submitted_by_name'],
+    json['submittedByName'],
+    json['SubmittedByName'],
+    json['supervisor_name'],
+    json['supervisorName'],
+    json['SupervisorName'],
+    json['created_by'],
+    json['createdBy'],
+    json['CreatedBy'],
+  ];
+
+  for (final value in candidates) {
+    takeCnic(value);
+    takeName(value);
+  }
+
+  createdBy = _optional(
+    json['verified_by'] ??
+        json['verifiedBy'] ??
+        json['VerifiedBy'] ??
+        json['created_by'] ??
+        json['createdBy'] ??
+        json['submitted_by'],
+  );
+  if (cnic == null && createdBy != null) cnic = _extractCnic(createdBy);
+
+  return (cnic: cnic, name: name, createdBy: createdBy);
 }
 
 class SupervisorProfile {
@@ -1799,7 +2007,13 @@ class SupervisorApi {
     );
   }
 
-  Future<FieldRecordDay> fieldRecords(String cnic, {String? date, String? kind}) async {
+  Future<FieldRecordDay> fieldRecords(
+    String cnic, {
+    String? date,
+    String? kind,
+    bool mineOnly = true,
+    SupervisorUser? session,
+  }) async {
     final data = _map(
       await _send(
         dio.get(
@@ -1808,20 +2022,96 @@ class SupervisorApi {
             'supervisor_cnic': cnic,
             'date': ?date,
             'kind': ?kind,
+            'mine_only': mineOnly ? 'true' : 'false',
           },
         ),
       ),
     );
-    return FieldRecordDay.fromJson(data);
+    var day = FieldRecordDay.fromJson(data);
+    if (!mineOnly || session == null) return day;
+
+    // Prefer VerifiedBy on each row (same as Evidence.VerifiedBy in SmartSWM).
+    var mine = [
+      for (final item in day.items)
+        if (item.submittedBy(session)) item,
+    ];
+
+    // If the list omitted VerifiedBy, resolve owners from today's evidence rows.
+    if (mine.isEmpty && day.items.isNotEmpty) {
+      final ownedIds = await _fieldRecordIdsForVerifiedBy(cnic, date: date ?? day.date, session: session);
+      if (ownedIds.isNotEmpty) {
+        mine = [
+          for (final item in day.items)
+            if (ownedIds.contains(item.id)) item,
+        ];
+      }
+    }
+
+    mine.sort((a, b) => b.id.compareTo(a.id));
+    return FieldRecordDay(date: day.date, count: mine.length, items: mine);
   }
 
-  Future<FieldRecordSummary> fieldRecord(String cnic, int id) async {
+  /// Evidence.VerifiedBy holds "Supervisor Name (CNIC)"; path contains field-record id.
+  Future<Set<int>> _fieldRecordIdsForVerifiedBy(
+    String cnic, {
+    String? date,
+    required SupervisorUser session,
+  }) async {
+    try {
+      final day = await evidence(cnic, date: date, mineOnly: false);
+      final ids = <int>{};
+      final sessionCnic = _digitsOnly(session.cnic);
+      final sessionName = session.fullName.trim().toLowerCase();
+      for (final item in day.items) {
+        final verified = (item.verifiedBy ?? '').trim();
+        if (verified.isEmpty) continue;
+        final verifiedCnic = _extractCnic(verified) ?? '';
+        final verifiedName = verified
+            .replaceAll(RegExp(r'\b\d{5}-?\d{7}-?\d{1}\b'), '')
+            .replaceAll(RegExp(r'\b\d{13}\b'), '')
+            .replaceAll(RegExp(r'[()]'), ' ')
+            .trim()
+            .toLowerCase();
+        final mine = (sessionCnic.isNotEmpty && verifiedCnic == sessionCnic) ||
+            (sessionName.isNotEmpty &&
+                verifiedName.isNotEmpty &&
+                (verifiedName == sessionName ||
+                    verifiedName.contains(sessionName) ||
+                    sessionName.contains(verifiedName)));
+        if (!mine) continue;
+        final id = _fieldRecordIdFromPath(item.url);
+        if (id != null) ids.add(id);
+      }
+      return ids;
+    } on SupervisorException {
+      return {};
+    }
+  }
+
+  int? _fieldRecordIdFromPath(String path) {
+    // /uploads/field-records/activity/containers/1409/file.png
+    final match = RegExp(r'/field-records/[^/]+/[^/]+/(\d+)/').firstMatch(path);
+    if (match != null) return int.tryParse(match.group(1)!);
+    final alt = RegExp(r'/field-records/[^/]+/(\d+)/').firstMatch(path);
+    if (alt != null) return int.tryParse(alt.group(1)!);
+    return null;
+  }
+
+  Future<FieldRecordSummary> fieldRecord(
+    String cnic,
+    int id, {
+    SupervisorUser? session,
+  }) async {
     final data = _map(
       await _send(
         dio.get('/api/supervisor/field-records/$id', queryParameters: {'supervisor_cnic': cnic}),
       ),
     );
-    return FieldRecordSummary.fromJson(data);
+    final record = FieldRecordSummary.fromJson(data);
+    if (session != null && record.isForeignTo(session)) {
+      throw SupervisorException('This record was submitted by another supervisor.');
+    }
+    return record;
   }
 
   Future<String> createComplaint({
@@ -2412,6 +2702,14 @@ Map<String, dynamic> _faceAttendance(Map<String, dynamic> json) {
     'checkOut': _optional(json['checkOut'] ?? json['check_out']),
     'geoTag': _optional(json['geoTag'] ?? json['geo_tag']),
     'date': _optional(json['date']),
+    'supervisorCnic': _optional(
+      json['supervisorCnic'] ?? json['supervisor_cnic'] ?? json['SupervisorCnic'],
+    ),
+    'supervisorName': _optional(
+      json['supervisorName'] ?? json['supervisor_name'] ?? json['SupervisorName'],
+    ),
+    'type': _optional(json['type']),
+    'timestamp': _optional(json['timestamp'] ?? json['created_at'] ?? json['CreatedAt']),
   };
 }
 

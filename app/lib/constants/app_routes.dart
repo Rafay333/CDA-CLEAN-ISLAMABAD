@@ -25,6 +25,9 @@ class AppRoutes {
   static const wasteActivity = '/waste/activity';
   static const wasteTagging = '/waste/tagging';
   static const recordDetails = '/waste/record';
+  static const reportRecordDetails = '/reports/record';
+  static const reportRecords = '/reports/records';
+  static const reportAttendanceDetails = '/reports/attendance';
   static const complaints = '/complaints';
   static const complaintMap = '/complaints/map';
   static const complaintList = '/complaints/list';

@@ -17,9 +17,6 @@ class TodayCardState extends State<TodayCard> {
   Future<void> reload() => _load();
   HrSummary? _summary;
   int? _openIssues;
-  int? _evidence;
-  int? _required;
-  int? _uploadedRequired;
   String? _error;
   bool _loading = true;
 
@@ -51,15 +48,11 @@ class TodayCardState extends State<TodayCard> {
     }
     final showHr = session.can(StaffCapability.manageHr);
     final showIssues = session.can(StaffCapability.resolveIssues);
-    final showEvidence = session.can(StaffCapability.submitEvidence);
-    if (!showHr && !showIssues && !showEvidence) {
+    if (!showHr && !showIssues) {
       setState(() {
         _loading = false;
         _summary = null;
         _openIssues = null;
-        _evidence = null;
-        _required = null;
-        _uploadedRequired = null;
         _error = null;
       });
       return;
@@ -68,25 +61,11 @@ class TodayCardState extends State<TodayCard> {
     final errors = <String>[];
     final summary = showHr ? await _try(() => api.hrSummary(session.cnic), errors) : null;
     final issues = showIssues ? await _try(() => api.openIssues(session.cnic), errors) : null;
-    EvidenceStatus? status;
-    EvidenceDay? day;
-    if (showEvidence) {
-      try {
-        status = await api.evidenceStatus(session.cnic);
-      } on SupervisorException {
-        day = await _try(() => api.evidence(session.cnic), errors);
-      }
-    }
     if (!mounted) return;
-    final hasAny = (showHr && summary != null) ||
-        (showIssues && issues != null) ||
-        (showEvidence && (status != null || day != null));
+    final hasAny = (showHr && summary != null) || (showIssues && issues != null);
     setState(() {
       _summary = summary;
       _openIssues = showIssues ? issues?.length : null;
-      _evidence = showEvidence ? (status?.totalPhotos ?? day?.count) : null;
-      _required = showEvidence ? status?.requiredCount : null;
-      _uploadedRequired = showEvidence ? status?.uploadedRequired : null;
       _loading = false;
       _error = hasAny ? null : (errors.isEmpty ? 'Could not load today.' : errors.first);
     });
@@ -97,8 +76,7 @@ class TodayCardState extends State<TodayCard> {
     final session = AppStateScope.of(context).session;
     final showHr = session?.can(StaffCapability.manageHr) == true;
     final showIssues = session?.can(StaffCapability.resolveIssues) == true;
-    final showEvidence = session?.can(StaffCapability.submitEvidence) == true;
-    if (!_loading && _error == null && !showHr && !showIssues && !showEvidence) {
+    if (!_loading && _error == null && !showHr && !showIssues) {
       return const SizedBox.shrink();
     }
     return Material(
@@ -126,13 +104,6 @@ class TodayCardState extends State<TodayCard> {
                     ),
                   if (showIssues)
                     _Stat(label: 'Open complaints', value: _openIssues == null ? '—' : '${_openIssues!}'),
-                  if (showEvidence)
-                    _Stat(
-                      label: 'PED photos',
-                      value: _required == null
-                          ? (_evidence == null ? '—' : '${_evidence!}')
-                          : '${_uploadedRequired ?? 0}/${_required ?? 0}',
-                    ),
                 ],
               ),
       ),
@@ -152,9 +123,9 @@ class _Stat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: AppType.section.copyWith(fontSize: 18, color: const Color(0xFF12304A))),
+          Text(value, style: AppType.title.copyWith(fontSize: 18, color: AppColors.navy)),
           const SizedBox(height: 2),
-          Text(label, style: AppType.caption),
+          Text(label, style: AppType.caption.copyWith(color: AppColors.textSecondary)),
         ],
       ),
     );

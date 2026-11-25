@@ -63,12 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 final hr = session?.can(StaffCapability.manageHr) == true ||
                     session?.can(StaffCapability.markAttendance) == true;
                 final waste = session?.can(StaffCapability.serveContainers) == true ||
-                    session?.can(StaffCapability.submitEvidence) == true ||
                     session?.canUseOtherFieldRecords == true;
                 final complaints = session?.can(StaffCapability.resolveIssues) == true;
                 final showToday = session?.can(StaffCapability.manageHr) == true ||
-                    session?.can(StaffCapability.resolveIssues) == true ||
-                    session?.can(StaffCapability.submitEvidence) == true;
+                    session?.can(StaffCapability.resolveIssues) == true;
                 final modules = <Widget>[
                   if (hr)
                     _ModuleCard(
@@ -97,10 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       tint: const Color(0xFFD9EFFB),
                       iconBackground: const Color(0xFFE7F4FC),
                       title: 'Solid Waste Management',
-                      subtitle: session?.can(StaffCapability.serveContainers) == true &&
-                              session?.can(StaffCapability.submitEvidence) != true
-                          ? 'Container service and clearance.'
-                          : 'Daily PED pictorial evidence.',
+                      subtitle: session?.canUseOtherFieldRecords == true
+                          ? 'Field activity, tagging and GPS records.'
+                          : 'Container service and clearance.',
                       onTap: () => context.push(AppRoutes.waste),
                     ),
                   if (complaints)

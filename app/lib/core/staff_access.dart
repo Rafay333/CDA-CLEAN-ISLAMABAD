@@ -22,16 +22,23 @@ extension StaffSession on SupervisorUser {
       return can(StaffCapability.manageHr) || can(StaffCapability.markAttendance);
     }
     if (path.startsWith(AppRoutes.wasteEvidenceUpload) || path.startsWith(AppRoutes.wasteEvidenceHistory)) {
-      return can(StaffCapability.submitEvidence);
+      return false;
     }
     if (path.startsWith(AppRoutes.wasteTagging)) return canUseOtherFieldRecords;
-    if (path.startsWith(AppRoutes.wasteActivity) || path.startsWith(AppRoutes.recordDetails)) {
+    if (path.startsWith(AppRoutes.reportAttendanceDetails)) {
+      return can(StaffCapability.markAttendance) ||
+          can(StaffCapability.manageHr) ||
+          can(StaffCapability.serveContainers) ||
+          canUseOtherFieldRecords;
+    }
+    if (path.startsWith(AppRoutes.wasteActivity) ||
+        path.startsWith(AppRoutes.recordDetails) ||
+        path.startsWith(AppRoutes.reportRecordDetails) ||
+        path.startsWith(AppRoutes.reportRecords)) {
       return can(StaffCapability.serveContainers) || canUseOtherFieldRecords;
     }
     if (path == AppRoutes.waste) {
-      return can(StaffCapability.serveContainers) ||
-          can(StaffCapability.submitEvidence) ||
-          canUseOtherFieldRecords;
+      return can(StaffCapability.serveContainers) || canUseOtherFieldRecords;
     }
     if (path.startsWith(AppRoutes.complaints) || path.startsWith(AppRoutes.notifications)) {
       return can(StaffCapability.resolveIssues);
